@@ -1,9 +1,9 @@
 import { config } from 'dotenv';
 import { defineConfig } from 'drizzle-kit';
 
-// Load .env.local first, then .env
-config({ path: '.env.local' });
-config({ path: '.env' });
+// Load .env.local first, then .env from repo root
+config({ path: '../../.env.local' });
+config({ path: '../../.env' });
 
 export default defineConfig({
   schema: './src/schema/index.ts',

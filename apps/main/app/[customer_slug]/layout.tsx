@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation';
 import { eq, and } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
 import { getMasterDb, schema } from '@/lib/master-db';
+import { ProvisioningPage } from './ProvisioningPage';
 
 interface TenantLayoutProps {
   children: React.ReactNode;
@@ -32,16 +33,8 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
   if (tenant.status !== 'active') {
     // Tenant is not active (provisioning, suspended, etc.)
     if (tenant.status === 'provisioning') {
-      // Show provisioning status page
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="text-center">
-            <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <h1 className="text-xl font-semibold text-slate-900">Setting up your workspace</h1>
-            <p className="text-slate-600 mt-2">This usually takes a few minutes...</p>
-          </div>
-        </div>
-      );
+      // Show provisioning page with auto-refresh
+      return <ProvisioningPage tenantId={tenant.id} />;
     }
 
     // For other non-active states, show error

@@ -14,6 +14,7 @@ const publicRoutes = [
 // Platform routes requiring session auth (cookie-based)
 const platformProtectedRoutes = [
   '/onboarding',
+  '/workspace-setup',
   '/pricing',
   '/checkout',
   '/workspaces',
@@ -23,13 +24,14 @@ const platformProtectedRoutes = [
 
 // Public API patterns (no auth required)
 const publicApiPatterns = [
-  /^\/api\/auth\/(signup|signin|verify-otp|session|logout)$/,
+  /^\/api\/auth\/(signup|signin|verify-otp|session|logout|resend-otp)$/,
   /^\/api\/[^/]+\/auth\/signup$/,
   /^\/api\/[^/]+\/auth\/verify-signup$/,
   /^\/api\/[^/]+\/auth\/send-code$/,
   /^\/api\/[^/]+\/auth\/verify-code$/,
   /^\/api\/health$/,
   /^\/api\/admin\//, // Admin routes use their own auth (x-admin-secret)
+  /^\/api\/platform\/provision$/, // Provisioning can be called internally
 ];
 
 // Check if path matches any public API pattern
@@ -56,7 +58,7 @@ function isTenantRoute(pathname: string): boolean {
 
   const platformPaths = [
     'api', 'signin', 'signup', 'verify-email',
-    'onboarding', 'pricing', 'checkout', 'workspaces',
+    'onboarding', 'workspace-setup', 'pricing', 'checkout', 'workspaces',
     'billing', 'account', '_next', 'static', 'favicon.ico'
   ];
 

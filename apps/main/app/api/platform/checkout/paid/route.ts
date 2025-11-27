@@ -35,7 +35,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const companyName = onboarding.companyName || 'My Workspace';
+    // Get company name from companyData JSON
+    const companyData = onboarding.companyData as Record<string, unknown> | null;
+    const companyName = (companyData?.companyName as string) || 'My Workspace';
     const slug = generateSlug(companyName);
 
     // Check if slug already exists
@@ -52,7 +54,6 @@ export async function POST(request: Request) {
         name: companyName,
         slug: finalSlug,
         status: 'provisioning',
-        planId: planId,
       })
       .returning();
 
@@ -62,7 +63,8 @@ export async function POST(request: Request) {
 
     await db.insert(schema.subscriptions).values({
       tenantId: tenant.id,
-      planId: planId,
+      plan: planId,
+      billing: 'monthly', // Default to monthly, can be passed from request
       status: 'active',
       currentPeriodStart: new Date(),
       currentPeriodEnd: periodEnd,
@@ -113,7 +115,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      redirectUrl: '/workspaces',
+      redirectUrl: `/${finalSlug}/Dashboard/Library`,
       tenantSlug: finalSlug,
     });
   } catch (error) {

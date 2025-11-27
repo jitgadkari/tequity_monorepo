@@ -11,18 +11,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { companyName, industry, companySize, role } = await request.json();
+    const body = await request.json();
+    const { companyName } = body;
 
-    if (!companyName || !industry || !companySize || !role) {
+    // Only companyName is required (dataroom name)
+    if (!companyName) {
       return NextResponse.json(
-        { error: 'All fields are required' },
+        { error: 'Dataroom name is required' },
         { status: 400 }
       );
     }
 
     const db = getMasterDb();
 
-    // Update onboarding record
+    // Store company data as JSON
+    const companyData = {
+      companyName,
+      ...body, // Include any additional fields
+    };
+
+    // Update or create onboarding record
     const existingOnboarding = await db.query.tenantOnboarding.findFirst({
       where: eq(schema.tenantOnboarding.userId, session.userId),
     });
@@ -31,10 +39,7 @@ export async function POST(request: Request) {
       await db
         .update(schema.tenantOnboarding)
         .set({
-          companyName,
-          industry,
-          companySize,
-          role,
+          companyData,
           companyInfoCompleted: true,
           updatedAt: new Date(),
         })
@@ -42,22 +47,19 @@ export async function POST(request: Request) {
     } else {
       await db.insert(schema.tenantOnboarding).values({
         userId: session.userId,
-        companyName,
-        industry,
-        companySize,
-        role,
+        companyData,
         companyInfoCompleted: true,
       });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Company info saved',
+      message: 'Dataroom name saved',
     });
   } catch (error) {
     console.error('Company onboarding error:', error);
     return NextResponse.json(
-      { error: 'Failed to save company info' },
+      { error: 'Failed to save dataroom name' },
       { status: 500 }
     );
   }

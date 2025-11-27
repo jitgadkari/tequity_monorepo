@@ -1,177 +1,681 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Plus_Jakarta_Sans, Instrument_Serif } from "next/font/google";
+import { PricingHeader } from "./components/PricingHeader";
+import { toast } from "sonner";
 
-const plans = [
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: '$0',
-    period: '/month',
-    description: 'Perfect for getting started',
-    features: [
-      '1 workspace',
-      '5 team members',
-      '1GB storage',
-      'Basic analytics',
-      'Email support',
-    ],
-    cta: 'Start free',
-    popular: false,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '$49',
-    period: '/month',
-    description: 'For growing teams',
-    features: [
-      'Unlimited workspaces',
-      '25 team members',
-      '50GB storage',
-      'Advanced analytics',
-      'Priority support',
-      'Custom branding',
-    ],
-    cta: 'Get started',
-    popular: true,
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    description: 'For large organizations',
-    features: [
-      'Everything in Pro',
-      'Unlimited team members',
-      'Unlimited storage',
-      'SSO & SAML',
-      'Dedicated support',
-      'SLA guarantee',
-    ],
-    cta: 'Contact sales',
-    popular: false,
-  },
-];
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plus-jakarta",
+  display: "swap",
+});
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-instrument-serif",
+  display: "swap",
+});
 
 export default function PricingPage() {
+  const [billingType, setBillingType] = useState("yearly");
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const router = useRouter();
-  const [loading, setLoading] = useState<string | null>(null);
 
-  const handleSelectPlan = async (planId: string) => {
-    if (planId === 'enterprise') {
-      // For enterprise, redirect to contact
-      window.location.href = 'mailto:sales@tequity.io?subject=Enterprise%20Plan%20Inquiry';
-      return;
-    }
-
-    setLoading(planId);
+  const handleSelectPlan = async (planName: string) => {
+    setSelectedPlan(planName);
+    setLoadingPlan(planName);
 
     try {
-      // For starter (free) plan, skip checkout and go directly to provisioning
-      if (planId === 'starter') {
-        const res = await fetch('/api/platform/checkout/free', {
-          method: 'POST',
-          credentials: 'include',
+      const planId = planName.toLowerCase();
+
+      // For starter (free) plan, skip checkout
+      if (planId === "starter") {
+        const res = await fetch("/api/platform/checkout/free", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan: planId, billing: billingType }),
+          credentials: "include",
         });
 
         const data = await res.json();
 
         if (!res.ok) {
-          throw new Error(data.error || 'Failed to process');
+          throw new Error(data.error || "Failed to process");
         }
 
-        // Redirect to the workspace or provisioning
-        router.push(data.redirectUrl || '/workspaces');
+        toast.success("Plan activated! Setting up your workspace...");
+        router.push(data.redirectUrl || "/workspaces");
+      } else if (planId === "enterprise") {
+        // For enterprise, redirect to contact
+        window.location.href =
+          "mailto:sales@tequity.io?subject=Enterprise%20Plan%20Inquiry";
+        setLoadingPlan(null);
+        setSelectedPlan(null);
       } else {
         // For paid plans, go to checkout
-        router.push(`/checkout?plan=${planId}`);
+        router.push(`/checkout?plan=${planId}&billing=${billingType}`);
       }
-    } catch (err) {
-      console.error('Plan selection error:', err);
-    } finally {
-      setLoading(null);
+    } catch (error) {
+      console.error("Error selecting plan:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to select plan"
+      );
+      setLoadingPlan(null);
+      setSelectedPlan(null);
     }
   };
 
+  const features = {
+    starter: [
+      "3 Paid Users",
+      "200 Total Users",
+      "1 TB Cloud Storage",
+      "AI data room setup from file dump",
+      "Auto-organization of up to 50 documents",
+      "Basic investor access (view-only)",
+      "Limited activity tracking (500 views)",
+      "Email support",
+    ],
+    professional: [
+      "10 Paid Users",
+      "1,000 Total Users",
+      "Unlimited Cloud Storage",
+      "Up to 3 active deal rooms",
+      "Full AI-powered Q&A + search",
+      "Custom document requests & fulfillment",
+      "Advanced activity tracking",
+      "Slack/CRM integrations",
+      "Email support",
+    ],
+    enterprise: [
+      "20 Paid Users",
+      "Unlimited Users",
+      "Unlimited Cloud Storage",
+      "Everything in Professional",
+      "Unlimited deal rooms",
+      "Multi-user teams + role-based permissions",
+      "Audit logs & download tracking",
+      "Priority support",
+    ],
+  };
+
+  const CheckIcon = () => (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M8 12.5L11 15.5L16 9.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+
+  const LoadingSpinner = () => (
+    <svg
+      className="animate-spin h-4 w-4"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      ></circle>
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      ></path>
+    </svg>
+  );
+
   return (
-    <div className="min-h-screen py-12 px-4">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold text-slate-900">Choose your plan</h1>
-          <p className="text-slate-600 mt-2">
-            Start free and scale as you grow. No credit card required.
-          </p>
-        </div>
+    <div className="min-h-screen bg-white py-6 overflow-hidden">
+      {/* Main Container */}
+      <div className="max-w-[1280px] min-h-[947.6px] mx-auto flex items-left justify-center py-8">
+        {/* Form Container */}
+        <div className="w-full max-w-[1000px] min-h-[755.6px] flex flex-col items-center gap-7">
+          {/* Header Section */}
+          <div className="w-full max-w-[1000px] flex flex-col items-start gap-6 px-4 sm:px-6 lg:px-8">
+            <PricingHeader
+              plusJakartaSansClass={plusJakartaSans.className}
+              instrumentSerifClass={instrumentSerif.className}
+            />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {plans.map((plan) => (
-            <div
-              key={plan.id}
-              className={`bg-white rounded-xl shadow-lg p-8 relative ${
-                plan.popular ? 'ring-2 ring-blue-600' : ''
-              }`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <span className="bg-blue-600 text-white text-xs font-medium px-3 py-1 rounded-full">
-                    Most popular
-                  </span>
-                </div>
-              )}
-
-              <div className="text-center mb-6">
-                <h2 className="text-xl font-bold text-slate-900">{plan.name}</h2>
-                <p className="text-slate-600 text-sm mt-1">{plan.description}</p>
-                <div className="mt-4">
-                  <span className="text-4xl font-bold text-slate-900">{plan.price}</span>
-                  <span className="text-slate-600">{plan.period}</span>
+            {/* Billing Toggle */}
+            <div className="flex items-center gap-1">
+              <div className="relative inline-flex items-center bg-white p-1 rounded-full border border-gray-200">
+                <div className="flex">
+                  <button
+                    onClick={() => setBillingType("monthly")}
+                    className={`relative px-6 py-2 text-sm font-medium rounded-full transition-colors ${
+                      billingType === "monthly"
+                        ? "bg-black text-white shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    onClick={() => setBillingType("yearly")}
+                    className={`relative px-6 py-2 text-sm font-medium rounded-full transition-colors ${
+                      billingType === "yearly"
+                        ? "bg-black text-white shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    Yearly
+                  </button>
                 </div>
               </div>
-
-              <ul className="space-y-3 mb-8">
-                {plan.features.map((feature, index) => (
-                  <li key={index} className="flex items-center text-slate-600">
-                    <svg
-                      className="w-5 h-5 text-green-500 mr-2 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                onClick={() => handleSelectPlan(plan.id)}
-                disabled={loading === plan.id}
-                className={`w-full py-2 px-4 font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                  plan.popular
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
-                }`}
-              >
-                {loading === plan.id ? 'Processing...' : plan.cta}
-              </button>
+              <span className="px-2 py-2 text-[#71717A] text-xs font-semibold rounded-full sm:whitespace-nowrap text-left">
+                <span className="text-blue-500">Save 33%</span> on a
+                <br className="sm:hidden" /> yearly subscription
+              </span>
             </div>
-          ))}
-        </div>
+          </div>
 
-        <div className="mt-4 flex justify-center">
-          <div className="flex gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-            <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-            <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+          {/* Pricing Cards */}
+          <div className="w-full min-h-[566px] flex gap-5 justify-start xl:justify-center overflow-x-auto overflow-y-visible xl:overflow-x-visible scrollbar-hide snap-x snap-mandatory xl:flex-row items-start pb-4 pt-5 px-4 sm:px-6 lg:px-8">
+            {/* Starter Plan */}
+            <div
+              className="w-[320px] min-w-[300px] flex-shrink-0 border-2 snap-center bg-white border-[#E4E4E7]"
+              style={{ borderRadius: "24px" }}
+            >
+              <div
+                className="w-[320px] flex flex-col items-start"
+                style={{ padding: "24px 16px 16px", gap: "24px" }}
+              >
+                <div
+                  className="w-[211px] flex flex-col items-start"
+                  style={{ padding: "0px 8px", gap: "24px" }}
+                >
+                  <div
+                    className="flex flex-col items-start"
+                    style={{ padding: "0px", gap: "2px" }}
+                  >
+                    <h3
+                      className={plusJakartaSans.className}
+                      style={{
+                        fontWeight: 500,
+                        fontSize: "20px",
+                        lineHeight: "32px",
+                        color: "#09090B",
+                      }}
+                    >
+                      Starter
+                    </h3>
+                    <p
+                      style={{
+                        fontFamily: "Inter",
+                        fontWeight: 400,
+                        fontSize: "14px",
+                        lineHeight: "20px",
+                        color: "#71717A",
+                      }}
+                    >
+                      Best for early-stage startups.
+                    </p>
+                  </div>
+
+                  <div className="flex items-end" style={{ gap: "4px" }}>
+                    <span
+                      className={plusJakartaSans.className}
+                      style={{
+                        fontWeight: 500,
+                        fontSize: "40px",
+                        lineHeight: "44px",
+                        color: "#09090B",
+                      }}
+                    >
+                      ${billingType === "yearly" ? "12" : "15"}
+                    </span>
+                    <div className="flex flex-col" style={{ gap: "0px" }}>
+                      <span
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 400,
+                          fontSize: "10px",
+                          lineHeight: "14px",
+                          letterSpacing: "-0.006em",
+                          color: "#71717A",
+                        }}
+                      >
+                        per month
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 400,
+                          fontSize: "10px",
+                          lineHeight: "14px",
+                          letterSpacing: "-0.006em",
+                          color: "#71717A",
+                        }}
+                      >
+                        billed {billingType}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={() => handleSelectPlan("Starter")}
+                  disabled={loadingPlan !== null && loadingPlan !== "Starter"}
+                  className={`w-full disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer ${
+                    selectedPlan === "Starter"
+                      ? "hover:opacity-80"
+                      : "hover:bg-[#F4F4F5]"
+                  }`}
+                  style={{
+                    height: "44px",
+                    background:
+                      selectedPlan === "Starter" ? "#09090B" : "white",
+                    border: "1px solid #E4E4E7",
+                    borderRadius: "6px",
+                    fontFamily: "Inter",
+                    fontWeight: 500,
+                    fontSize: "14px",
+                    lineHeight: "20px",
+                    letterSpacing: "-0.006em",
+                    color: selectedPlan === "Starter" ? "#FFFFFF" : "#09090B",
+                  }}
+                >
+                  {loadingPlan === "Starter" ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <LoadingSpinner />
+                      Starting trial...
+                    </span>
+                  ) : (
+                    "Start 30 days free trial"
+                  )}
+                </Button>
+
+                <div
+                  className="flex flex-col items-start"
+                  style={{
+                    padding: "0px 16px 16px 8px",
+                    gap: "20px",
+                    width: "288px",
+                  }}
+                >
+                  {features.starter.map((feature, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start"
+                      style={{ gap: "8px", width: "264px" }}
+                    >
+                      <div style={{ width: "18px", height: "18px" }}>
+                        <CheckIcon />
+                      </div>
+                      <span
+                        className="truncate"
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 500,
+                          fontSize: "14px",
+                          lineHeight: "100%",
+                          letterSpacing: "-0.006em",
+                          color: "#09090B",
+                          flex: 1,
+                        }}
+                      >
+                        {feature}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Professional Plan - Highlighted */}
+            <div
+              className="w-[320px] min-w-[300px] flex-shrink-0 border-2 snap-center relative bg-[#F4F4F5] border-[#E4E4E7]"
+              style={{ borderRadius: "24px" }}
+            >
+              <div
+                className="w-[320px] flex flex-col items-start"
+                style={{ padding: "24px 16px 16px", gap: "24px" }}
+              >
+                <div
+                  className="w-[223px] flex flex-col items-start"
+                  style={{ padding: "0px 8px", gap: "24px" }}
+                >
+                  <div
+                    className="flex flex-col items-start"
+                    style={{ padding: "0px", gap: "2px" }}
+                  >
+                    <div className="flex items-center" style={{ gap: "12px" }}>
+                      <h3
+                        className={plusJakartaSans.className}
+                        style={{
+                          fontWeight: 500,
+                          fontSize: "20px",
+                          lineHeight: "32px",
+                          color: "#09090B",
+                        }}
+                      >
+                        Professional
+                      </h3>
+                      <div
+                        className="flex justify-center items-center"
+                        style={{
+                          padding: "5px 10px",
+                          background: "#007AFF",
+                          boxShadow:
+                            "0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+                          borderRadius: "5.1px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: "Inter",
+                            fontWeight: 700,
+                            fontSize: "12px",
+                            lineHeight: "16px",
+                            textAlign: "center",
+                            letterSpacing: "-0.006em",
+                            color: "#FFFFFF",
+                          }}
+                        >
+                          Popular
+                        </span>
+                      </div>
+                    </div>
+                    <p
+                      style={{
+                        fontFamily: "Inter",
+                        fontWeight: 400,
+                        fontSize: "14px",
+                        lineHeight: "20px",
+                        color: "#71717A",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      For large teams & corporations.
+                    </p>
+                  </div>
+
+                  <div className="flex items-end" style={{ gap: "4px" }}>
+                    <span
+                      className={plusJakartaSans.className}
+                      style={{
+                        fontWeight: 500,
+                        fontSize: "40px",
+                        lineHeight: "44px",
+                        color: "#09090B",
+                      }}
+                    >
+                      ${billingType === "yearly" ? "25" : "30"}
+                    </span>
+                    <div className="flex flex-col" style={{ gap: "0px" }}>
+                      <span
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 400,
+                          fontSize: "10px",
+                          lineHeight: "14px",
+                          letterSpacing: "-0.006em",
+                          color: "#71717A",
+                        }}
+                      >
+                        per month
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 400,
+                          fontSize: "10px",
+                          lineHeight: "14px",
+                          letterSpacing: "-0.006em",
+                          color: "#71717A",
+                        }}
+                      >
+                        billed {billingType}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => handleSelectPlan("Professional")}
+                  disabled={
+                    loadingPlan !== null && loadingPlan !== "Professional"
+                  }
+                  className="w-full disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:opacity-80 cursor-pointer"
+                  style={{
+                    height: "44px",
+                    background: "#09090B",
+                    borderRadius: "6px",
+                    fontFamily: "Inter",
+                    fontWeight: 500,
+                    fontSize: "14px",
+                    lineHeight: "20px",
+                    letterSpacing: "-0.006em",
+                    color: "#FFFFFF",
+                  }}
+                >
+                  {loadingPlan === "Professional" ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <LoadingSpinner />
+                      Starting trial...
+                    </span>
+                  ) : (
+                    "Start 30 days free trial"
+                  )}
+                </Button>
+
+                <div
+                  className="flex flex-col items-start"
+                  style={{
+                    padding: "0px 16px 16px 8px",
+                    gap: "20px",
+                    width: "288px",
+                  }}
+                >
+                  {features.professional.map((feature, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start"
+                      style={{ gap: "8px", width: "264px" }}
+                    >
+                      <div style={{ width: "18px", height: "18px" }}>
+                        <CheckIcon />
+                      </div>
+                      <span
+                        className="truncate"
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 500,
+                          fontSize: "14px",
+                          lineHeight: "100%",
+                          letterSpacing: "-0.006em",
+                          color: "#09090B",
+                          flex: 1,
+                        }}
+                      >
+                        {feature}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Enterprise Plan */}
+            <div
+              className="w-[320px] min-w-[300px] flex-shrink-0 border-2 snap-center bg-white border-[#E4E4E7]"
+              style={{ borderRadius: "24px" }}
+            >
+              <div
+                className="w-[320px] flex flex-col items-start"
+                style={{ padding: "24px 16px 16px", gap: "24px" }}
+              >
+                <div
+                  className="w-[187px] flex flex-col items-start"
+                  style={{ padding: "0px 8px", gap: "24px" }}
+                >
+                  <div
+                    className="flex flex-col items-start"
+                    style={{ padding: "0px", gap: "2px" }}
+                  >
+                    <h3
+                      className={plusJakartaSans.className}
+                      style={{
+                        fontWeight: 500,
+                        fontSize: "20px",
+                        lineHeight: "32px",
+                        color: "#09090B",
+                      }}
+                    >
+                      Enterprise
+                    </h3>
+                    <p
+                      style={{
+                        fontFamily: "Inter",
+                        fontWeight: 400,
+                        fontSize: "14px",
+                        lineHeight: "20px",
+                        color: "#71717A",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Best for business owners.
+                    </p>
+                  </div>
+
+                  <div className="flex items-end" style={{ gap: "4px" }}>
+                    <span
+                      className={plusJakartaSans.className}
+                      style={{
+                        fontWeight: 500,
+                        fontSize: "40px",
+                        lineHeight: "44px",
+                        color: "#09090B",
+                      }}
+                    >
+                      ${billingType === "yearly" ? "59" : "70"}
+                    </span>
+                    <div className="flex flex-col" style={{ gap: "0px" }}>
+                      <span
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 400,
+                          fontSize: "10px",
+                          lineHeight: "14px",
+                          letterSpacing: "-0.006em",
+                          color: "#71717A",
+                        }}
+                      >
+                        per month
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 400,
+                          fontSize: "10px",
+                          lineHeight: "14px",
+                          letterSpacing: "-0.006em",
+                          color: "#71717A",
+                        }}
+                      >
+                        billed {billingType}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={() => handleSelectPlan("Enterprise")}
+                  disabled={
+                    loadingPlan !== null && loadingPlan !== "Enterprise"
+                  }
+                  className={`w-full disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer ${
+                    selectedPlan === "Enterprise"
+                      ? "hover:opacity-80"
+                      : "hover:bg-[#F4F4F5]"
+                  }`}
+                  style={{
+                    height: "44px",
+                    background:
+                      selectedPlan === "Enterprise" ? "#09090B" : "white",
+                    border: "1px solid #E4E4E7",
+                    borderRadius: "6px",
+                    fontFamily: "Inter",
+                    fontWeight: 500,
+                    fontSize: "14px",
+                    lineHeight: "20px",
+                    letterSpacing: "-0.006em",
+                    color:
+                      selectedPlan === "Enterprise" ? "#FFFFFF" : "#09090B",
+                  }}
+                >
+                  {loadingPlan === "Enterprise" ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <LoadingSpinner />
+                      Starting trial...
+                    </span>
+                  ) : (
+                    "Start 30 days free trial"
+                  )}
+                </Button>
+
+                <div
+                  className="flex flex-col items-start"
+                  style={{
+                    padding: "0px 16px 16px 8px",
+                    gap: "20px",
+                    width: "288px",
+                  }}
+                >
+                  {features.enterprise.map((feature, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start"
+                      style={{ gap: "8px", width: "264px" }}
+                    >
+                      <div style={{ width: "18px", height: "18px" }}>
+                        <CheckIcon />
+                      </div>
+                      <span
+                        className="truncate"
+                        style={{
+                          fontFamily: "Inter",
+                          fontWeight: 500,
+                          fontSize: "14px",
+                          lineHeight: "100%",
+                          letterSpacing: "-0.006em",
+                          color: "#09090B",
+                          flex: 1,
+                        }}
+                      >
+                        {feature}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

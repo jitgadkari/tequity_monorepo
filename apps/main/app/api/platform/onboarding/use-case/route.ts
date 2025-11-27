@@ -11,22 +11,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { useCases } = await request.json();
+    const body = await request.json();
+    // Support both single useCase string or useCases array
+    const useCase = body.useCase;
+    const useCases = body.useCases || (useCase ? [useCase] : []);
 
-    if (!useCases || !Array.isArray(useCases) || useCases.length === 0) {
+    if (!useCases || useCases.length === 0) {
       return NextResponse.json(
-        { error: 'At least one use case is required' },
+        { error: 'Please select a use case' },
         { status: 400 }
       );
     }
 
     const db = getMasterDb();
 
-    // Update onboarding record
+    // Get existing onboarding to merge with companyData
+    const existingOnboarding = await db.query.tenantOnboarding.findFirst({
+      where: eq(schema.tenantOnboarding.userId, session.userId),
+    });
+
+    const existingCompanyData = (existingOnboarding?.companyData as Record<string, unknown>) || {};
+
+    // Update onboarding record - store useCases in companyData
     await db
       .update(schema.tenantOnboarding)
       .set({
-        useCases,
+        companyData: {
+          ...existingCompanyData,
+          useCases,
+        },
         useCaseCompleted: true,
         updatedAt: new Date(),
       })

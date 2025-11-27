@@ -41,7 +41,7 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const isChatPage = pathname === "/Dashboard/chat";
+  const isChatPage = pathname?.endsWith("/Dashboard/chat");
   const { theme, setTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [starredFiles, setStarredFiles] = useState<
@@ -106,10 +106,17 @@ export function DashboardLayout({
     };
   }, []);
 
-  const handleLogout = () => {
-    // Add your logout logic here
-    console.log("Logging out...");
-    router.push("/login");
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) {
+        router.push('/signin');
+        router.refresh();
+      }
+    } catch (error) {
+      console.error('Logout failed:', error);
+      router.push('/signin');
+    }
   };
 
   const toggleSidebar = () => {

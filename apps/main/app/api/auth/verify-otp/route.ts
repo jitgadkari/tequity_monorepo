@@ -104,7 +104,7 @@ export async function POST(request: Request) {
     });
 
     // Determine redirect URL based on user state
-    let redirectUrl = '/workspaces';
+    let redirectUrl = '/workspace-setup';
 
     if (!user.onboardingCompleted) {
       // Check onboarding progress
@@ -112,29 +112,35 @@ export async function POST(request: Request) {
         where: eq(schema.tenantOnboarding.userId, user.id),
       });
 
-      if (!onboarding?.companyInfoCompleted) {
-        redirectUrl = '/onboarding/company';
-      } else if (!onboarding?.useCaseCompleted) {
-        redirectUrl = '/onboarding/use-case';
+      if (!onboarding?.companyInfoCompleted || !onboarding?.useCaseCompleted) {
+        redirectUrl = '/workspace-setup';
       } else if (!onboarding?.paymentCompleted) {
         redirectUrl = '/pricing';
       }
     } else {
-      // Check if user has active tenants
+      // Check if user has tenants
       const memberships = await db.query.tenantMemberships.findMany({
         where: eq(schema.tenantMemberships.userId, user.id),
-        with: {
-          // We need the tenant to check status
-        },
       });
 
-      if (memberships.length === 1) {
-        // Get the tenant slug
-        const tenant = await db.query.tenants.findFirst({
-          where: eq(schema.tenants.id, memberships[0].tenantId),
-        });
-        if (tenant?.status === 'active') {
-          redirectUrl = `/${tenant.slug}/Dashboard`;
+      if (memberships.length > 0) {
+        // Get the first tenant slug (prioritize active ones)
+        const tenants = await Promise.all(
+          memberships.map(async (m) => {
+            return db.query.tenants.findFirst({
+              where: eq(schema.tenants.id, m.tenantId),
+            });
+          })
+        );
+
+        const activeTenant = tenants.find((t) => t?.status === 'active');
+        const anyTenant = tenants.find((t) => t);
+
+        if (activeTenant) {
+          redirectUrl = `/${activeTenant.slug}/Dashboard/Library`;
+        } else if (anyTenant) {
+          // Tenant is still provisioning, go to a waiting page or dashboard
+          redirectUrl = `/${anyTenant.slug}/Dashboard/Library`;
         }
       }
     }

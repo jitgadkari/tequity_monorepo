@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
 import { getMasterDb, schema } from '@/lib/master-db';
+import { LogoutButton } from './LogoutButton';
 
 export default async function WorkspacesPage() {
   const session = await getSession();
@@ -19,7 +20,7 @@ export default async function WorkspacesPage() {
   });
 
   if (user && !user.onboardingCompleted) {
-    redirect('/onboarding/company');
+    redirect('/workspace-setup');
   }
 
   // Get user's tenant memberships
@@ -42,10 +43,16 @@ export default async function WorkspacesPage() {
     })
   ).then((results) => results.filter(Boolean));
 
-  // If only one active workspace, redirect directly
-  const activeWorkspaces = tenants.filter((t) => t && t.status === 'active');
-  if (activeWorkspaces.length === 1 && activeWorkspaces[0]) {
-    redirect(`/${activeWorkspaces[0].slug}/Dashboard`);
+  // If user has any tenants, redirect to first one's Dashboard
+  if (tenants.length > 0) {
+    const activeTenant = tenants.find((t) => t && t.status === 'active');
+    const anyTenant = tenants.find((t) => t);
+
+    if (activeTenant) {
+      redirect(`/${activeTenant.slug}/Dashboard/Library`);
+    } else if (anyTenant) {
+      redirect(`/${anyTenant.slug}/Dashboard/Library`);
+    }
   }
 
   return (
@@ -56,15 +63,18 @@ export default async function WorkspacesPage() {
             <h1 className="text-2xl font-bold text-slate-900">Your Workspaces</h1>
             <p className="text-slate-600 mt-1">Select a workspace to continue</p>
           </div>
-          <Link
-            href="/pricing"
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Workspace
-          </Link>
+          <div className="flex items-center gap-2">
+            <LogoutButton />
+            <Link
+              href="/pricing"
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Workspace
+            </Link>
+          </div>
         </div>
 
         {tenants.length === 0 ? (
