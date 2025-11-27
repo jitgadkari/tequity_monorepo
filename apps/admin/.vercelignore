@@ -1,0 +1,43 @@
+# Vercel Ignore File
+# Files and directories to ignore during Vercel deployment
+
+# Dependencies
+node_modules
+
+# Testing
+coverage
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+
+# Development
+.env.local
+.env.development
+.env.test
+
+# Vercel
+.vercel
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (optional - uncomment if you don't want to deploy docs)
+# *.md
+# docs/
+
+# Scripts (optional)
+# scripts/

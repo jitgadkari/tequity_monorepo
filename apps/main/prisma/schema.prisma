@@ -1,0 +1,295 @@
+// Tequity Database Schema
+// Multi-tenant SaaS with RAG capabilities
+// Tenant DB comes from env, slug extracted from URL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// TENANT (for multi-tenancy tracking)
+// ============================================
+
+model Tenant {
+  id        String   @id @default(uuid())
+  slug      String   @unique // URL slug e.g., "acme-corp"
+  name      String
+  isActive  Boolean  @default(true)
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  tenantSlug    String    // Link to tenant by slug
+  email         String
+  fullName      String?
+  avatarUrl     String?
+  role          String    @default("member") // owner, admin, member
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  ownedDatarooms  Dataroom[]        @relation("DataroomOwner")
+  memberships     DataroomMember[]
+  uploadedFiles   File[]
+  chatSessions    ChatSession[]
+  recentlyVisited RecentlyVisited[]
+  starredFiles    StarredFile[]
+  settings        UserSettings?
+  subscription    Subscription?
+
+  @@unique([tenantSlug, email]) // Email unique per tenant
+  @@index([email])
+  @@index([tenantSlug])
+}
+
+model OtpVerification {
+  id         String    @id @default(uuid())
+  tenantSlug String
+  email      String
+  code       String
+  purpose    String    // login, signup, password_reset
+  expiresAt  DateTime
+  verifiedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantSlug, email])
+  @@index([expiresAt])
+}
+
+// ============================================
+// DATAROOM & MEMBERS
+// ============================================
+
+model Dataroom {
+  id          String   @id @default(uuid())
+  tenantSlug  String
+  name        String
+  description String?
+  ownerId     String
+  useCase     String?  // investor, single_firm
+  settings    Json     @default("{}")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  owner        User             @relation("DataroomOwner", fields: [ownerId], references: [id])
+  members      DataroomMember[]
+  files        File[]
+  folders      Folder[]
+  chatSessions ChatSession[]
+
+  @@index([tenantSlug])
+  @@index([ownerId])
+}
+
+model DataroomMember {
+  id         String    @id @default(uuid())
+  dataroomId String
+  userId     String
+  role       String    @default("member") // owner, admin, member, viewer
+  invitedBy  String?
+  invitedAt  DateTime  @default(now())
+  joinedAt   DateTime?
+  status     String    @default("pending") // pending, active, revoked
+  createdAt  DateTime  @default(now())
+
+  // Relations
+  dataroom Dataroom @relation(fields: [dataroomId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dataroomId, userId])
+  @@index([dataroomId])
+  @@index([userId])
+}
+
+// ============================================
+// FILES & FOLDERS
+// ============================================
+
+model Folder {
+  id         String   @id @default(uuid())
+  dataroomId String
+  parentId   String?
+  name       String
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  dataroom Dataroom @relation(fields: [dataroomId], references: [id], onDelete: Cascade)
+  parent   Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children Folder[] @relation("FolderHierarchy")
+  files    File[]
+
+  @@index([dataroomId])
+  @@index([parentId])
+}
+
+model File {
+  id           String   @id @default(uuid())
+  dataroomId   String
+  folderId     String?
+  uploadedBy   String?
+  name         String
+  originalName String
+  fileType     String
+  fileSize     Int
+  mimeType     String?
+  storageUrl   String   // Local path or S3 URL
+  category     String?  // Financial category
+  description  String?
+  status       String   @default("uploaded") // uploaded, processing, ready, error
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  dataroom    Dataroom            @relation(fields: [dataroomId], references: [id], onDelete: Cascade)
+  folder      Folder?             @relation(fields: [folderId], references: [id])
+  uploader    User?               @relation(fields: [uploadedBy], references: [id])
+  recentViews RecentlyVisited[]
+  stars       StarredFile[]
+  embeddings  DocumentEmbedding[]
+
+  @@index([dataroomId])
+  @@index([folderId])
+}
+
+model RecentlyVisited {
+  id        String   @id @default(uuid())
+  userId    String
+  fileId    String
+  visitedAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fileId])
+  @@index([userId])
+}
+
+model StarredFile {
+  id        String   @id @default(uuid())
+  userId    String
+  fileId    String
+  starredAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fileId])
+  @@index([userId])
+}
+
+// ============================================
+// CHAT & MESSAGES
+// ============================================
+
+model ChatSession {
+  id         String   @id @default(uuid())
+  dataroomId String
+  userId     String?
+  title      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  dataroom Dataroom      @relation(fields: [dataroomId], references: [id], onDelete: Cascade)
+  user     User?         @relation(fields: [userId], references: [id])
+  messages ChatMessage[]
+
+  @@index([dataroomId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id              String   @id @default(uuid())
+  sessionId       String
+  role            String   // user, assistant, system
+  content         String
+  metadata        Json?    // sources, file references
+  fileAttachments Json?    // Array of file IDs
+  createdAt       DateTime @default(now())
+
+  // Relations
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+// ============================================
+// USER SETTINGS & SUBSCRIPTION
+// ============================================
+
+model UserSettings {
+  id                      String   @id @default(uuid())
+  userId                  String   @unique
+  notificationPreferences Json     @default("{\"email\": true, \"push\": false}")
+  uiPreferences           Json     @default("{\"theme\": \"light\", \"language\": \"en\"}")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id        String    @id @default(uuid())
+  userId    String    @unique
+  plan      String    @default("free") // free, starter, professional, enterprise
+  billing   String    @default("monthly") // monthly, yearly
+  status    String    @default("active") // active, cancelled, expired
+  startedAt DateTime  @default(now())
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// VECTOR EMBEDDINGS FOR RAG
+// ============================================
+// Note: pgvector extension must be enabled:
+// CREATE EXTENSION IF NOT EXISTS vector;
+
+model DocumentEmbedding {
+  id         String   @id @default(uuid())
+  fileId     String
+  chunkIndex Int      // Position in document
+  content    String   // Text chunk content
+  metadata   Json?    // Sheet name, row number, page, etc.
+  createdAt  DateTime @default(now())
+
+  // Relations
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  // Note: The embedding vector field will be added via raw SQL migration
+  // as Prisma doesn't natively support pgvector yet
+  // ALTER TABLE "DocumentEmbedding" ADD COLUMN "embedding" vector(1536);
+
+  @@index([fileId])
+}
