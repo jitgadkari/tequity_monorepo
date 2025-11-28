@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import prisma, { isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 import { z } from 'zod'
@@ -34,6 +34,9 @@ export async function POST(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Parse request body
     const body = await request.json()

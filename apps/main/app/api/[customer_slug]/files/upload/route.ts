@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-import prisma, { isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 import { processFileForRAG, getFileTypeFromExtension } from '@/lib/file-processing'
@@ -32,6 +32,9 @@ export async function POST(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Parse multipart form data
     const formData = await request.formData()

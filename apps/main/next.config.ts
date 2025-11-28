@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Enable standalone output for Docker deployments
+  output: 'standalone',
+
   typescript: {
     // Allow builds to succeed even with type errors
     // TODO: Fix all type errors and remove this

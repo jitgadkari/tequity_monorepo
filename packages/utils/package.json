@@ -9,13 +9,16 @@
     "./jwt": "./src/jwt.ts",
     "./crypto": "./src/crypto.ts",
     "./otp": "./src/otp.ts",
-    "./supabase": "./src/supabase-management.ts"
+    "./supabase": "./src/supabase-management.ts",
+    "./pulumi": "./src/pulumi-provisioning.ts"
   },
   "dependencies": {
     "@tequity/types": "workspace:*",
+    "@pulumi/pulumi": "^3.100.0",
     "jose": "^6.1.1"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.9.3"
   }
 }

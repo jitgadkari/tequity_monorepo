@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFile, unlink } from 'fs/promises'
-import prisma, { isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 
@@ -25,6 +25,9 @@ export async function GET(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Check if download is requested
     const url = new URL(request.url)
@@ -172,6 +175,9 @@ export async function PATCH(
       return ApiErrors.unauthorized()
     }
 
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
+
     // Get file
     const file = await prisma.file.findUnique({
       where: { id: fileId },
@@ -304,6 +310,9 @@ export async function DELETE(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Get file
     const file = await prisma.file.findUnique({

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import prisma, { isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 
@@ -24,6 +24,9 @@ export async function GET(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Get folder with its dataroom
     const folder = await prisma.folder.findUnique({
@@ -152,6 +155,9 @@ export async function PATCH(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Get folder
     const folder = await prisma.folder.findUnique({
@@ -305,6 +311,9 @@ export async function DELETE(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Get folder
     const folder = await prisma.folder.findUnique({

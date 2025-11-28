@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getSession, updateSession } from '@/lib/session';
 import { getMasterDb, schema } from '@/lib/master-db';
-import { generateSlug } from '@tequity/utils';
+import { nanoid } from 'nanoid';
+
+// Generate a unique tenant slug (not based on user input)
+function generateTenantSlug(): string {
+  // Generate a short, unique ID like "t-abc123xyz"
+  return `t-${nanoid(10).toLowerCase()}`;
+}
 
 export async function POST() {
   try {
@@ -26,27 +32,33 @@ export async function POST() {
       );
     }
 
-    // Get company name from companyData JSON
+    // Get company/dataroom name from companyData JSON
     const companyData = onboarding.companyData as Record<string, unknown> | null;
-    const companyName = (companyData?.companyName as string) || 'My Workspace';
-    const slug = generateSlug(companyName);
+    const dataroomName = (companyData?.companyName as string) || 'My Workspace';
 
-    // Check if slug already exists
-    const existingTenant = await db.query.tenants.findFirst({
-      where: eq(schema.tenants.slug, slug),
-    });
+    // Generate a unique tenant slug (NOT based on dataroom name)
+    // This ensures unique URLs and avoids conflicts
+    const tenantSlug = generateTenantSlug();
 
-    const finalSlug = existingTenant ? `${slug}-${Date.now().toString(36)}` : slug;
-
-    // Create tenant with free plan
+    // Create tenant with unique slug
     const [tenant] = await db
       .insert(schema.tenants)
       .values({
-        name: companyName,
-        slug: finalSlug,
+        name: dataroomName, // User-friendly name for display
+        slug: tenantSlug,   // Unique URL-safe identifier
         status: 'provisioning',
+        useCase: onboarding.useCaseCompleted ? 'investor' : undefined, // From onboarding
       })
       .returning();
+
+    // Link onboarding to tenant
+    await db
+      .update(schema.tenantOnboarding)
+      .set({
+        tenantId: tenant.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tenantOnboarding.userId, session.userId));
 
     // Create subscription (free plan)
     await db.insert(schema.subscriptions).values({
@@ -83,8 +95,11 @@ export async function POST() {
       })
       .where(eq(schema.users.id, session.userId));
 
-    // Update session
-    await updateSession({ onboardingCompleted: true });
+    // Update session with tenant info
+    await updateSession({
+      onboardingCompleted: true,
+      tenantSlug: tenantSlug,
+    });
 
     // Queue tenant provisioning (in production, this would trigger async provisioning)
     // For now, we'll do it synchronously in the provision API
@@ -103,8 +118,9 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      redirectUrl: `/${finalSlug}/Dashboard/Library`,
-      tenantSlug: finalSlug,
+      redirectUrl: `/${tenantSlug}/Dashboard/Library`,
+      tenantSlug: tenantSlug,
+      tenantName: dataroomName,
     });
   } catch (error) {
     console.error('Free checkout error:', error);

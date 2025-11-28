@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import prisma, { isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 import { z } from 'zod'
@@ -30,6 +30,9 @@ export async function GET(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Get chat session with messages
     const session = await prisma.chatSession.findFirst({
@@ -103,6 +106,9 @@ export async function PATCH(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Parse request body
     const body = await request.json()
@@ -178,6 +184,9 @@ export async function DELETE(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Check if session exists and user owns it
     const existingSession = await prisma.chatSession.findFirst({

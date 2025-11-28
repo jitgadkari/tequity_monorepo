@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,7 +23,6 @@ export default function WorkspaceSetupPage() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
 
   // Step 1: Dataroom Name
   const handleStep1Submit = useCallback(
@@ -108,50 +106,78 @@ export default function WorkspaceSetupPage() {
     [selectedOption]
   );
 
+  // Navigate to pricing page
+  const navigateToPricing = useCallback(() => {
+    // Use window.location for reliable navigation
+    window.location.href = "/pricing";
+  }, []);
+
   // Step 3: Team Invitations
   const handleStep3Submit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+
+      // Prevent double submission
+      if (isLoading) return;
+
       setIsLoading(true);
       setError("");
 
       try {
         const emails = [email1, email2, email3].filter(
-          (e) => e.trim().length > 0
+          (email) => email.trim().length > 0
         );
 
+        const res = await fetch("/api/platform/onboarding/team", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emails }),
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to send invitations");
+        }
+
         if (emails.length > 0) {
-          const res = await fetch("/api/platform/onboarding/team", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ emails }),
-            credentials: "include",
-          });
-
-          if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || "Failed to send invitations");
-          }
-
           toast.success("Invitations sent!");
         }
 
-        router.push("/pricing");
+        // Navigate to pricing
+        toast.success("Redirecting to pricing...");
+        navigateToPricing();
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Something went wrong";
         setError(errorMessage);
         toast.error(errorMessage);
-      } finally {
         setIsLoading(false);
       }
+      // Don't set isLoading to false on success - keep loading during redirect
     },
-    [email1, email2, email3, router]
+    [email1, email2, email3, isLoading, navigateToPricing]
   );
 
-  const handleSkip = useCallback(() => {
-    router.push("/pricing");
-  }, [router]);
+  const handleSkip = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      // Mark team step as skipped
+      await fetch("/api/platform/onboarding/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: [] }),
+        credentials: "include",
+      });
+
+      navigateToPricing();
+    } catch {
+      setIsLoading(false);
+      toast.error("Failed to proceed. Please try again.");
+    }
+  }, [isLoading, navigateToPricing]);
 
   const options = [
     { value: "investor", label: "Investor" },

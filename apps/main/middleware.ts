@@ -116,7 +116,10 @@ export function middleware(request: NextRequest) {
       signinUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(signinUrl);
     }
-    return NextResponse.next();
+    // Pass pathname to layout for onboarding status checks
+    const response = NextResponse.next();
+    response.headers.set('x-pathname', pathname);
+    return response;
   }
 
   // Tenant routes - check session and membership

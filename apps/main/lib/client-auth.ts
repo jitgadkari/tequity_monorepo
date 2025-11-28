@@ -220,8 +220,7 @@ export async function getCurrentUser(): Promise<ApiResponse<User>> {
  */
 export function logout(): void {
   removeToken()
-  const tenantSlug = getTenantSlug()
   if (typeof window !== 'undefined') {
-    window.location.href = `/${tenantSlug}/login`
+    window.location.href = '/signin'
   }
 }

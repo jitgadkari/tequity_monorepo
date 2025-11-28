@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import prisma, { isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 
@@ -38,6 +38,9 @@ export async function GET(
     if (!dataroomId) {
       return ApiErrors.validationError('dataroomId is required')
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Check if user has access to this dataroom
     const dataroom = await prisma.dataroom.findFirst({

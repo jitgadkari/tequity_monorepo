@@ -4,6 +4,7 @@ export interface SessionPayload {
   email: string;
   emailVerified: boolean;
   onboardingCompleted: boolean;
+  tenantSlug?: string; // Set after checkout/payment
 }
 
 // Auth API request/response types

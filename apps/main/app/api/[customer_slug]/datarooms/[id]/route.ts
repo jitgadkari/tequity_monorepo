@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import prisma, { isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 
@@ -24,6 +24,9 @@ export async function GET(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Get dataroom with access check
     const dataroom = await prisma.dataroom.findFirst({
@@ -141,6 +144,9 @@ export async function PATCH(
       return ApiErrors.unauthorized()
     }
 
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
+
     // Check if user is owner or admin
     const dataroom = await prisma.dataroom.findFirst({
       where: {
@@ -241,6 +247,9 @@ export async function DELETE(
     if (!payload) {
       return ApiErrors.unauthorized()
     }
+
+    // Get tenant-specific database connection
+    const prisma = await getTenantDb(tenantSlug)
 
     // Only owner can delete
     const dataroom = await prisma.dataroom.findFirst({

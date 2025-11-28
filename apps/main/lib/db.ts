@@ -1,8 +1,13 @@
 import { PrismaClient } from '@prisma/client'
+import { eq } from 'drizzle-orm'
+import { getMasterDb, schema } from './master-db'
+import { decrypt } from '@tequity/utils'
 
-// PrismaClient singleton for Next.js
-// Prevents multiple instances in development due to hot reloading
+// Cache for tenant Prisma clients
+const tenantClients = new Map<string, PrismaClient>()
 
+// Default PrismaClient singleton for Next.js
+// Used for mock mode or fallback
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
@@ -16,23 +21,84 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 /**
+ * Get tenant database credentials from master DB
+ */
+async function getTenantCredentials(tenantSlug: string): Promise<{
+  databaseUrl: string
+  isMock: boolean
+} | null> {
+  try {
+    const db = getMasterDb()
+
+    const tenant = await db.query.tenants.findFirst({
+      where: eq(schema.tenants.slug, tenantSlug),
+    })
+
+    if (!tenant) {
+      console.warn(`Tenant not found: ${tenantSlug}`)
+      return null
+    }
+
+    // Check if using mock mode
+    if (tenant.databaseUrlEncrypted === 'mock_encrypted_url' ||
+        tenant.supabaseProjectId?.startsWith('mock_')) {
+      console.log(`Using mock mode for tenant: ${tenantSlug}`)
+      return {
+        databaseUrl: process.env.DATABASE_URL || '',
+        isMock: true,
+      }
+    }
+
+    // Decrypt the real database URL
+    if (!tenant.databaseUrlEncrypted) {
+      console.warn(`No database URL for tenant: ${tenantSlug}`)
+      return null
+    }
+
+    const databaseUrl = decrypt(tenant.databaseUrlEncrypted)
+    return { databaseUrl, isMock: false }
+  } catch (error) {
+    console.error(`Error getting tenant credentials for ${tenantSlug}:`, error)
+    return null
+  }
+}
+
+/**
  * Get prisma client for a specific tenant
- * Currently uses single DATABASE_URL from env
- * Tenant slug from URL is used to filter/scope data
+ * Returns a tenant-specific connection or the default connection in mock mode
  *
  * @param tenantSlug - The tenant identifier from URL (e.g., "acme-corp")
- * @returns PrismaClient instance
+ * @returns PrismaClient instance connected to tenant's database
  */
 export async function getTenantDb(tenantSlug: string): Promise<PrismaClient> {
-  // For now, we use the same database and filter by tenantSlug
-  // The tenantSlug is extracted from the URL path
-  // All queries should include tenantSlug in their where clause
+  // Check if we already have a cached client for this tenant
+  const cached = tenantClients.get(tenantSlug)
+  if (cached) {
+    return cached
+  }
 
-  // Optionally validate tenant exists (can be cached)
-  // For performance, you may want to skip this in production
-  // and rely on the unique constraint to catch invalid tenants
+  // Get tenant credentials
+  const credentials = await getTenantCredentials(tenantSlug)
 
-  return prisma
+  // Use default database if credentials not available or in mock mode
+  if (!credentials || credentials.isMock) {
+    return prisma
+  }
+
+  // Create new Prisma client for this tenant
+  const tenantPrisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: credentials.databaseUrl,
+      },
+    },
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  })
+
+  // Cache the client
+  tenantClients.set(tenantSlug, tenantPrisma)
+
+  return tenantPrisma
 }
 
 /**
@@ -47,7 +113,8 @@ export function isValidTenantSlug(slug: string): boolean {
 }
 
 /**
- * Get or create a tenant by slug
+ * Get or create a tenant by slug (in the tenant's own DB)
+ * This is for tenant-specific data, not the master DB
  */
 export async function getOrCreateTenant(slug: string, name?: string) {
   const existing = await prisma.tenant.findUnique({
@@ -78,6 +145,17 @@ export async function isTenantActive(slug: string): Promise<boolean> {
   })
 
   return tenant?.isActive ?? false
+}
+
+/**
+ * Clean up tenant connections on shutdown
+ */
+export async function disconnectTenants(): Promise<void> {
+  const disconnectPromises = Array.from(tenantClients.values()).map(client =>
+    client.$disconnect()
+  )
+  await Promise.all(disconnectPromises)
+  tenantClients.clear()
 }
 
 export default prisma
