@@ -6,12 +6,17 @@ import {
   waitForProjectReady,
   getTenantCredentials,
   encrypt,
-  provisionWithPulumi,
 } from '@tequity/utils';
 import {
   getEffectiveProvisioningProvider,
   type ProvisioningProvider,
 } from '@/lib/feature-flags';
+
+// Dynamic import for Pulumi to avoid bundling native dependencies
+async function getProvisionWithPulumi() {
+  const { provisionWithPulumi } = await import('@tequity/utils/pulumi');
+  return provisionWithPulumi;
+}
 
 /**
  * Mock provisioning - for development/testing
@@ -139,6 +144,7 @@ async function provisionPulumi(
     })
     .where(eq(schema.tenants.id, tenantId));
 
+  const provisionWithPulumi = await getProvisionWithPulumi();
   const result = await provisionWithPulumi({
     tenantId,
     tenantSlug: tenant.slug,

@@ -1,15 +1,15 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import * as schema from './schema';
+import * as schema from '@tequity/database';
 
-// Disable prefetch for Neon serverless driver
+// Shared database connection with main app
 const connectionString = process.env.DATABASE_URL!;
 
 // Create postgres client
 const client = postgres(connectionString, { prepare: false });
 
-// Create drizzle instance
+// Create drizzle instance with shared schema
 export const db = drizzle(client, { schema });
 
-// Export schema for use in queries
+// Re-export schema for use in queries
 export { schema };

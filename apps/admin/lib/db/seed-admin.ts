@@ -1,11 +1,17 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { platformAdmins } from './schema';
+import { platformAdmins } from '@tequity/database';
 import * as dotenv from 'dotenv';
-import { hashPassword } from '../auth';
+import bcrypt from 'bcryptjs';
+
+// Hash password function (copied from auth to avoid next/headers import)
+async function hashPassword(password: string): Promise<string> {
+  return await bcrypt.hash(password, 10);
+}
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env' });
 
 // Create dedicated connection for seeding
 const connectionString = process.env.DATABASE_URL!;

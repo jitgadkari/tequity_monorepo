@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
+import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/auth';
+
+const { users } = schema;
 
 // GET /api/users/[id] - Get a single user by ID
 export async function GET(
@@ -10,7 +11,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require admin authentication
     await requireAdmin();
     const { id } = await params;
 
@@ -27,7 +27,23 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(user);
+    // Transform to match frontend expectations
+    const transformedUser = {
+      id: user.id,
+      name: user.fullName || user.email.split('@')[0],
+      email: user.email,
+      avatar: user.fullName
+        ? user.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+        : user.email.substring(0, 2).toUpperCase(),
+      avatarUrl: user.avatarUrl,
+      status: user.emailVerified ? 'active' : 'pending',
+      emailVerified: user.emailVerified,
+      onboardingCompleted: user.onboardingCompleted,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    return NextResponse.json(transformedUser);
   } catch (error: any) {
     console.error('Error fetching user:', error);
     if (error.message === 'Unauthorized') {
@@ -49,40 +65,25 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require admin authentication
     await requireAdmin();
     const { id } = await params;
     const body = await request.json();
 
-    // Only update allowed fields
     const updateData: any = {};
 
-    if (body.name !== undefined) updateData.name = body.name;
+    if (body.name !== undefined || body.fullName !== undefined) {
+      updateData.fullName = body.fullName || body.name;
+    }
     if (body.email !== undefined) updateData.email = body.email;
-    if (body.role !== undefined) {
-      // Validate role
-      if (!['admin', 'general'].includes(body.role.toLowerCase())) {
-        return NextResponse.json(
-          { error: 'Invalid role. Must be admin or general' },
-          { status: 400 }
-        );
-      }
-      updateData.role = body.role.toLowerCase();
-    }
-    if (body.status !== undefined) {
-      // Validate status
-      if (!['active', 'inactive', 'pending'].includes(body.status.toLowerCase())) {
-        return NextResponse.json(
-          { error: 'Invalid status. Must be active, inactive, or pending' },
-          { status: 400 }
-        );
-      }
-      updateData.status = body.status.toLowerCase();
-    }
-    if (body.avatar !== undefined) updateData.avatar = body.avatar;
-    if (body.lastActive !== undefined) updateData.lastActive = new Date(body.lastActive);
+    if (body.avatarUrl !== undefined) updateData.avatarUrl = body.avatarUrl;
+    if (body.emailVerified !== undefined) updateData.emailVerified = body.emailVerified;
+    if (body.onboardingCompleted !== undefined) updateData.onboardingCompleted = body.onboardingCompleted;
 
-    // Always update the updatedAt timestamp
+    // Handle status -> emailVerified mapping
+    if (body.status !== undefined) {
+      updateData.emailVerified = body.status === 'active';
+    }
+
     updateData.updatedAt = new Date();
 
     const [updatedUser] = await db
@@ -120,7 +121,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require admin authentication
     await requireAdmin();
     const { id } = await params;
 

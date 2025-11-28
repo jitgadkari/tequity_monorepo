@@ -1,8 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { subscriptions } from '@/lib/db/schema';
+import { db, schema } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/auth';
+
+const { subscriptions } = schema;
+
+// GET /api/subscriptions/[id] - Get a single subscription by ID
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireAdmin();
+    const { id } = await params;
+
+    const [subscription] = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.id, id))
+      .limit(1);
+
+    if (!subscription) {
+      return NextResponse.json(
+        { error: 'Subscription not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(subscription);
+  } catch (error: any) {
+    console.error('Error fetching subscription:', error);
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    return NextResponse.json(
+      { error: 'Failed to fetch subscription' },
+      { status: 500 }
+    );
+  }
+}
 
 // PATCH /api/subscriptions/[id] - Update a subscription
 export async function PATCH(
@@ -10,27 +49,20 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require admin authentication
     await requireAdmin();
-
     const { id } = await params;
     const body = await request.json();
 
-    // Only update allowed fields
     const updateData: any = {};
 
-    if (body.amount !== undefined) updateData.amount = body.amount.toString();
-    if (body.dueDate !== undefined) updateData.dueDate = new Date(body.dueDate);
-    if (body.description !== undefined) updateData.description = body.description;
-    if (body.status !== undefined) {
-      updateData.status = body.status;
-      // If marking as paid, set payment date
-      if (body.status === 'paid') {
-        updateData.paymentDate = new Date();
-      }
-    }
+    if (body.plan !== undefined) updateData.plan = body.plan;
+    if (body.billing !== undefined) updateData.billing = body.billing;
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.cancelAtPeriodEnd !== undefined) updateData.cancelAtPeriodEnd = body.cancelAtPeriodEnd;
+    if (body.currentPeriodStart !== undefined) updateData.currentPeriodStart = new Date(body.currentPeriodStart);
+    if (body.currentPeriodEnd !== undefined) updateData.currentPeriodEnd = new Date(body.currentPeriodEnd);
+    if (body.trialEndsAt !== undefined) updateData.trialEndsAt = body.trialEndsAt ? new Date(body.trialEndsAt) : null;
 
-    // Always update the updatedAt timestamp
     updateData.updatedAt = new Date();
 
     const [updatedSubscription] = await db
@@ -68,9 +100,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require admin authentication
     await requireAdmin();
-
     const { id } = await params;
 
     const [deletedSubscription] = await db

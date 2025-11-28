@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTheme } from "@/context/ThemeContext";
-import { X, CheckCircle } from "lucide-react";
+import { X } from "lucide-react";
 
 interface AddCustomerModalProps {
   isOpen: boolean;
@@ -18,13 +18,25 @@ export default function AddCustomerModal({
   const { theme } = useTheme();
   const isLight = theme === "light";
   const [formData, setFormData] = useState({
-    companyName: "",
-    companyEmail: "",
-    dbUrl: "",
-    plan: "Basic Plan",
+    name: "",
+    slug: "",
+    useCase: "",
+    companySize: "",
+    industry: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Auto-generate slug from name
+  useEffect(() => {
+    if (formData.name && !formData.slug) {
+      const generatedSlug = formData.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+      setFormData(prev => ({ ...prev, slug: generatedSlug }));
+    }
+  }, [formData.name]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -52,16 +64,18 @@ export default function AddCustomerModal({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: formData.companyName,
-          email: formData.companyEmail,
-          plan: formData.plan,
-          ownerEmail: formData.companyEmail,
-          dbUrl: formData.dbUrl,
+          name: formData.name,
+          slug: formData.slug || undefined,
+          useCase: formData.useCase || undefined,
+          companySize: formData.companySize || undefined,
+          industry: formData.industry || undefined,
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to create customer');
+        throw new Error(data.error || 'Failed to create tenant');
       }
 
       // Success
@@ -69,14 +83,15 @@ export default function AddCustomerModal({
       onClose();
       // Reset form
       setFormData({
-        companyName: "",
-        companyEmail: "",
-        dbUrl: "",
-        plan: "Basic Plan",
+        name: "",
+        slug: "",
+        useCase: "",
+        companySize: "",
+        industry: "",
       });
-    } catch (err) {
-      setError('Failed to create customer. Please try again.');
-      console.error('Error creating customer:', err);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create tenant. Please try again.');
+      console.error('Error creating tenant:', err);
     } finally {
       setLoading(false);
     }
@@ -85,12 +100,12 @@ export default function AddCustomerModal({
   const handleClose = () => {
     onClose();
     setError("");
-    // Reset form
     setFormData({
-      companyName: "",
-      companyEmail: "",
-      dbUrl: "",
-      plan: "Basic Plan",
+      name: "",
+      slug: "",
+      useCase: "",
+      companySize: "",
+      industry: "",
     });
   };
 
@@ -119,7 +134,7 @@ export default function AddCustomerModal({
                 isLight ? "text-gray-900" : "text-white"
               }`}
             >
-              Add Customer
+              Add Dataroom
             </h2>
             <button
               onClick={handleClose}
@@ -138,21 +153,21 @@ export default function AddCustomerModal({
             {/* Company Name */}
             <div>
               <label
-                htmlFor="companyName"
+                htmlFor="name"
                 className={`block text-sm font-medium mb-2 ${
                   isLight ? "text-gray-900" : "text-white"
                 }`}
               >
-                Company Name
+                Company Name *
               </label>
               <input
                 type="text"
-                id="companyName"
-                value={formData.companyName}
+                id="name"
+                value={formData.name}
                 onChange={(e) =>
-                  setFormData({ ...formData, companyName: e.target.value })
+                  setFormData({ ...formData, name: e.target.value })
                 }
-                placeholder="Enter customer name"
+                placeholder="Enter company name"
                 className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
                   isLight
                     ? "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
@@ -162,110 +177,128 @@ export default function AddCustomerModal({
               />
             </div>
 
-            {/* Company Email */}
+            {/* Slug */}
             <div>
               <label
-                htmlFor="companyEmail"
+                htmlFor="slug"
                 className={`block text-sm font-medium mb-2 ${
                   isLight ? "text-gray-900" : "text-white"
                 }`}
               >
-                Company Email
-              </label>
-              <input
-                type="email"
-                id="companyEmail"
-                value={formData.companyEmail}
-                onChange={(e) =>
-                  setFormData({ ...formData, companyEmail: e.target.value })
-                }
-                placeholder="Enter company email"
-                className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                  isLight
-                    ? "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
-                    : "border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:border-blue-500 focus:ring-blue-500/20"
-                }`}
-                required
-              />
-              <p
-                className={`mt-2 text-sm ${
-                  isLight ? "text-gray-600" : "text-zinc-400"
-                }`}
-              >
-                This person will receive the email with a link to set up the
-                platform.
-              </p>
-            </div>
-
-            {/* Database URL */}
-            <div>
-              <label
-                htmlFor="dbUrl"
-                className={`block text-sm font-medium mb-2 ${
-                  isLight ? "text-gray-900" : "text-white"
-                }`}
-              >
-                Database URL
+                Slug
               </label>
               <input
                 type="text"
-                id="dbUrl"
-                value={formData.dbUrl}
+                id="slug"
+                value={formData.slug}
                 onChange={(e) =>
-                  setFormData({ ...formData, dbUrl: e.target.value })
+                  setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })
                 }
-                placeholder="postgresql://user:pass@host:5432/dbname"
+                placeholder="company-slug"
                 className={`w-full rounded-md border px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 ${
                   isLight
                     ? "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
                     : "border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:border-blue-500 focus:ring-blue-500/20"
                 }`}
-                required
               />
               <p
                 className={`mt-2 text-sm ${
                   isLight ? "text-gray-600" : "text-zinc-400"
                 }`}
               >
-                PostgreSQL connection string for this customer's database.
+                URL-friendly identifier (auto-generated from name)
               </p>
             </div>
 
-            {/* Plan */}
+            {/* Use Case */}
             <div>
               <label
-                htmlFor="plan"
+                htmlFor="useCase"
                 className={`block text-sm font-medium mb-2 ${
                   isLight ? "text-gray-900" : "text-white"
                 }`}
               >
-                Plan
+                Use Case
               </label>
               <select
-                id="plan"
-                value={formData.plan}
+                id="useCase"
+                value={formData.useCase}
                 onChange={(e) =>
-                  setFormData({ ...formData, plan: e.target.value })
+                  setFormData({ ...formData, useCase: e.target.value })
                 }
                 className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
                   isLight
                     ? "border-gray-300 bg-white text-gray-900 focus:border-blue-500 focus:ring-blue-500/20"
                     : "border-zinc-700 bg-zinc-800 text-white focus:border-blue-500 focus:ring-blue-500/20"
                 }`}
-                required
               >
-                <option value="Basic Plan">Basic Plan</option>
-                <option value="Standard Plan">Standard Plan</option>
-                <option value="Premium Plan">Premium Plan</option>
-                <option value="Pro Plan">Pro Plan</option>
-                <option value="Enterprise Plan">Enterprise Plan</option>
+                <option value="">Select use case</option>
+                <option value="investor">Investor</option>
+                <option value="single_firm">Single Firm</option>
               </select>
+            </div>
+
+            {/* Company Size */}
+            <div>
+              <label
+                htmlFor="companySize"
+                className={`block text-sm font-medium mb-2 ${
+                  isLight ? "text-gray-900" : "text-white"
+                }`}
+              >
+                Company Size
+              </label>
+              <select
+                id="companySize"
+                value={formData.companySize}
+                onChange={(e) =>
+                  setFormData({ ...formData, companySize: e.target.value })
+                }
+                className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isLight
+                    ? "border-gray-300 bg-white text-gray-900 focus:border-blue-500 focus:ring-blue-500/20"
+                    : "border-zinc-700 bg-zinc-800 text-white focus:border-blue-500 focus:ring-blue-500/20"
+                }`}
+              >
+                <option value="">Select company size</option>
+                <option value="1-10">1-10 employees</option>
+                <option value="11-50">11-50 employees</option>
+                <option value="51-200">51-200 employees</option>
+                <option value="201-500">201-500 employees</option>
+                <option value="500+">500+ employees</option>
+              </select>
+            </div>
+
+            {/* Industry */}
+            <div>
+              <label
+                htmlFor="industry"
+                className={`block text-sm font-medium mb-2 ${
+                  isLight ? "text-gray-900" : "text-white"
+                }`}
+              >
+                Industry
+              </label>
+              <input
+                type="text"
+                id="industry"
+                value={formData.industry}
+                onChange={(e) =>
+                  setFormData({ ...formData, industry: e.target.value })
+                }
+                placeholder="e.g., Financial Services, Technology"
+                className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isLight
+                    ? "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
+                    : "border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:border-blue-500 focus:ring-blue-500/20"
+                }`}
+              />
             </div>
 
             {/* Error Message */}
             {error && (
-              <div className="rounded-md bg-red-50 border border-red-200 p-3">
-                <p className="text-sm text-red-600">{error}</p>
+              <div className={`rounded-md p-3 ${isLight ? "bg-red-50 border border-red-200" : "bg-red-950/50 border border-red-900"}`}>
+                <p className={`text-sm ${isLight ? "text-red-600" : "text-red-400"}`}>{error}</p>
               </div>
             )}
 
@@ -273,13 +306,14 @@ export default function AddCustomerModal({
             <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
               <button
                 type="submit"
-                className={`w-full sm:w-auto rounded-md px-6 py-2.5 text-sm font-medium transition-colors ${
+                disabled={loading}
+                className={`w-full sm:w-auto rounded-md px-6 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${
                   isLight
                     ? "bg-gray-900 hover:bg-gray-800 text-white"
                     : "bg-blue-600 hover:bg-blue-700 text-white"
                 }`}
               >
-                Save
+                {loading ? 'Creating...' : 'Create Dataroom'}
               </button>
               <button
                 type="button"

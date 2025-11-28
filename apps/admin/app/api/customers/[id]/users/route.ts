@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
-import { like, or, eq, asc, desc, sql } from 'drizzle-orm';
+import { db, schema } from '@/lib/db';
+import { like, or, eq, asc, desc, sql, and } from 'drizzle-orm';
 import { requireAdmin } from '@/lib/auth';
 
-// GET /api/customers/[id]/users - List all users for a customer with search and pagination
+const { users, tenantMemberships } = schema;
+
+// GET /api/customers/[id]/users - List all users for a tenant via memberships
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require admin authentication
     await requireAdmin();
-    const { id: customerId } = await params;
+    const { id: tenantId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1');
@@ -20,45 +20,77 @@ export async function GET(
     const sortBy = searchParams.get('sortBy') || 'createdAt';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
 
-    // Calculate offset
     const offset = (page - 1) * limit;
 
-    // Build search conditions - must belong to customer
-    const conditions = [eq(users.customerId, customerId)];
-
-    if (search) {
-      conditions.push(
-        or(
-          like(users.name, `%${search}%`),
-          like(users.email, `%${search}%`),
-          like(users.role, `%${search}%`)
-        )!
-      );
-    }
+    // Build base query with join
+    const baseQuery = db
+      .select({
+        id: users.id,
+        email: users.email,
+        fullName: users.fullName,
+        avatarUrl: users.avatarUrl,
+        emailVerified: users.emailVerified,
+        onboardingCompleted: users.onboardingCompleted,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        role: tenantMemberships.role,
+        joinedAt: tenantMemberships.joinedAt,
+      })
+      .from(tenantMemberships)
+      .innerJoin(users, eq(tenantMemberships.userId, users.id))
+      .where(eq(tenantMemberships.tenantId, tenantId));
 
     // Get total count
-    const [countResult] = await db
+    const countQuery = db
       .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(sql`${sql.join(conditions, sql` AND `)}`);
+      .from(tenantMemberships)
+      .innerJoin(users, eq(tenantMemberships.userId, users.id))
+      .where(eq(tenantMemberships.tenantId, tenantId));
 
+    const [countResult] = await countQuery;
     const totalCount = Number(countResult.count);
     const totalPages = Math.ceil(totalCount / limit);
 
     // Get users with pagination
-    const orderColumn = sortBy === 'lastActive' ? users.lastActive : users.createdAt;
-    const orderDirection = sortOrder === 'asc' ? asc(orderColumn) : desc(orderColumn);
+    const orderDirection = sortOrder === 'asc' ? asc(users.createdAt) : desc(users.createdAt);
 
     const result = await db
-      .select()
-      .from(users)
-      .where(sql`${sql.join(conditions, sql` AND `)}`)
+      .select({
+        id: users.id,
+        email: users.email,
+        fullName: users.fullName,
+        avatarUrl: users.avatarUrl,
+        emailVerified: users.emailVerified,
+        onboardingCompleted: users.onboardingCompleted,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        role: tenantMemberships.role,
+        joinedAt: tenantMemberships.joinedAt,
+      })
+      .from(tenantMemberships)
+      .innerJoin(users, eq(tenantMemberships.userId, users.id))
+      .where(eq(tenantMemberships.tenantId, tenantId))
       .orderBy(orderDirection)
       .limit(limit)
       .offset(offset);
 
+    // Transform to match frontend expectations
+    const transformedUsers = result.map((user) => ({
+      id: user.id,
+      name: user.fullName || user.email.split('@')[0],
+      email: user.email,
+      role: user.role || 'member',
+      status: user.emailVerified ? 'active' : 'pending',
+      avatar: user.fullName
+        ? user.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+        : user.email.substring(0, 2).toUpperCase(),
+      lastActive: user.updatedAt,
+      createdAt: user.createdAt,
+      joinedAt: user.joinedAt,
+    }));
+
     return NextResponse.json({
-      users: result,
+      users: transformedUsers,
       pagination: {
         page,
         limit,
@@ -81,56 +113,85 @@ export async function GET(
   }
 }
 
-// POST /api/customers/[id]/users - Create a new user for a customer
+// POST /api/customers/[id]/users - Create a new user and add to tenant
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require admin authentication
     await requireAdmin();
-    const { id: customerId } = await params;
+    const { id: tenantId } = await params;
     const body = await request.json();
 
-    // Validate required fields
     const { name, email, role } = body;
 
-    if (!name || !email || !role) {
+    if (!email) {
       return NextResponse.json(
-        { error: 'Missing required fields: name, email, role' },
+        { error: 'Missing required field: email' },
         { status: 400 }
       );
     }
 
-    // Validate role
-    if (!['admin', 'general'].includes(role.toLowerCase())) {
-      return NextResponse.json(
-        { error: 'Invalid role. Must be admin or general' },
-        { status: 400 }
-      );
+    // Check if user already exists
+    let [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    let userId: string;
+
+    if (existingUser) {
+      userId = existingUser.id;
+
+      // Check if already a member
+      const [existingMembership] = await db
+        .select()
+        .from(tenantMemberships)
+        .where(and(
+          eq(tenantMemberships.userId, userId),
+          eq(tenantMemberships.tenantId, tenantId)
+        ))
+        .limit(1);
+
+      if (existingMembership) {
+        return NextResponse.json(
+          { error: 'User is already a member of this tenant' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Create new user
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          email,
+          fullName: name || null,
+          emailVerified: false,
+          onboardingCompleted: false,
+        })
+        .returning();
+      userId = newUser.id;
     }
 
-    // Generate avatar from name initials
-    const nameParts = name.split(' ');
-    const avatar = nameParts.length >= 2
-      ? (nameParts[0][0] + nameParts[1][0]).toUpperCase()
-      : name.substring(0, 2).toUpperCase();
+    // Create membership
+    const membershipRole = role === 'admin' ? 'admin' : role === 'owner' ? 'owner' : 'member';
 
-    // Insert new user
-    const [newUser] = await db
-      .insert(users)
+    const [newMembership] = await db
+      .insert(tenantMemberships)
       .values({
-        customerId,
-        name,
-        email,
-        role: role.toLowerCase(),
-        avatar,
-        status: 'pending',
-        lastActive: new Date(),
+        userId,
+        tenantId,
+        role: membershipRole,
+        invitedAt: new Date(),
       })
       .returning();
 
-    return NextResponse.json(newUser, { status: 201 });
+    return NextResponse.json({
+      userId,
+      membershipId: newMembership.id,
+      message: 'User added to tenant'
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating user:', error);
     if (error.message === 'Unauthorized') {
