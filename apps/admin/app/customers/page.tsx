@@ -124,7 +124,7 @@ export default function CustomersPage() {
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-6">
           {/* Page Title */}
           <h1 className={`text-2xl font-bold mb-6 ${isLight ? "text-gray-900" : "text-white"}`}>
-            Customers
+            Datarooms
           </h1>
 
           {/* Search and Actions Bar */}
@@ -162,7 +162,7 @@ export default function CustomersPage() {
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              + Add Customer
+              + Add Dataroom
             </button>
           </div>
 
@@ -187,7 +187,7 @@ export default function CustomersPage() {
                     <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                       isLight ? "text-gray-600" : "text-zinc-400"
                     }`}>
-                      Customer
+                      Dataroom
                     </th>
                     <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                       isLight ? "text-gray-600" : "text-zinc-400"
@@ -406,7 +406,7 @@ export default function CustomersPage() {
                 isLight ? "text-green-700" : "text-green-400"
               }`}
             >
-              Customer Successfully Created
+              Dataroom Successfully Created
             </span>
           </div>
         </div>

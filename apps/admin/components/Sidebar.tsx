@@ -6,22 +6,18 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Building2,
-  CreditCard,
-  Users,
   Settings,
   Receipt,
   ChevronsUpDown,
   X,
-  FileText,
 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useSettings } from "@/context/SettingsContext";
 
 const navigation = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/" },
-  { name: "Customers", icon: Building2, href: "/customers" },
+  { name: "Datarooms", icon: Building2, href: "/customers" },
   { name: "Subscriptions", icon: Receipt, href: "/subscriptions" },
-  { name: "Customer Prompts", icon: FileText, href: "/customer-prompts" },
 ];
 
 interface SidebarProps {

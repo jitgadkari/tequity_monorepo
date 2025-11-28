@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { customers } from '@/lib/db/schema';
+import { db, schema } from '@/lib/db';
 import { like, or, asc, desc, sql, eq } from 'drizzle-orm';
 import { requireAdmin, validateServiceApiKey } from '@/lib/auth';
-import crypto from 'crypto';
-import { generateSlug, makeSlugUnique } from '@/lib/utils/slug';
 
-// GET /api/customers - List all customers with search and pagination
-// Supports service-to-service authentication for slug-based lookups
+const { tenants } = schema;
+
+// GET /api/customers - List all tenants with search and pagination
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -20,13 +18,13 @@ export async function GET(request: NextRequest) {
     if (slug && isServiceCall) {
       const result = await db
         .select()
-        .from(customers)
-        .where(eq(customers.slug, slug))
+        .from(tenants)
+        .where(eq(tenants.slug, slug))
         .limit(1);
 
       if (result.length === 0) {
         return NextResponse.json(
-          { error: 'Customer not found' },
+          { error: 'Tenant not found' },
           { status: 404 }
         );
       }
@@ -34,7 +32,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: result[0] });
     }
 
-    // Admin authentication required for listing customers
+    // Admin authentication required for listing tenants
     await requireAdmin();
 
     const search = searchParams.get('search') || '';
@@ -49,35 +47,53 @@ export async function GET(request: NextRequest) {
     // Build search conditions
     const searchConditions = search
       ? or(
-          like(customers.name, `%${search}%`),
-          like(customers.email, `%${search}%`),
-          like(customers.plan, `%${search}%`)
+          like(tenants.name, `%${search}%`),
+          like(tenants.slug, `%${search}%`)
         )
       : undefined;
 
     // Get total count
     const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
-      .from(customers)
+      .from(tenants)
       .where(searchConditions);
 
     const totalCount = Number(countResult.count);
     const totalPages = Math.ceil(totalCount / limit);
 
-    // Get customers with pagination
-    const orderColumn = sortBy === 'lastActive' ? customers.lastActive : customers.createdAt;
+    // Get tenants with pagination
+    const orderColumn = sortBy === 'updatedAt' ? tenants.updatedAt : tenants.createdAt;
     const orderDirection = sortOrder === 'asc' ? asc(orderColumn) : desc(orderColumn);
 
     const result = await db
       .select()
-      .from(customers)
+      .from(tenants)
       .where(searchConditions)
       .orderBy(orderDirection)
       .limit(limit)
       .offset(offset);
 
+    // Transform to match frontend expectations
+    const customers = result.map((tenant) => ({
+      id: tenant.id,
+      name: tenant.name,
+      email: tenant.slug, // Using slug as identifier
+      slug: tenant.slug,
+      plan: 'starter', // Will come from subscriptions table
+      status: tenant.status === 'active' ? 'active' :
+              tenant.status === 'suspended' ? 'inactive' : 'pending',
+      lastActive: tenant.updatedAt,
+      logo: tenant.name.charAt(0).toUpperCase(),
+      logoColor: getColorFromString(tenant.name),
+      createdAt: tenant.createdAt,
+      updatedAt: tenant.updatedAt,
+      useCase: tenant.useCase,
+      companySize: tenant.companySize,
+      industry: tenant.industry,
+    }));
+
     return NextResponse.json({
-      customers: result,
+      customers,
       pagination: {
         page,
         limit,
@@ -86,7 +102,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching customers:', error);
+    console.error('Error fetching tenants:', error);
     if (error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -94,72 +110,70 @@ export async function GET(request: NextRequest) {
       );
     }
     return NextResponse.json(
-      { error: 'Failed to fetch customers' },
+      { error: 'Failed to fetch tenants' },
       { status: 500 }
     );
   }
 }
 
-// POST /api/customers - Create a new customer
+// Helper to generate consistent color from string
+function getColorFromString(str: string): string {
+  const colors = ['#FF5722', '#2196F3', '#9C27B0', '#795548', '#607D8B', '#FF9800', '#424242', '#4CAF50', '#E91E63'];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+// POST /api/customers - Create a new tenant
 export async function POST(request: NextRequest) {
   try {
-    // Require admin authentication
     await requireAdmin();
     const body = await request.json();
 
-    // Validate required fields
-    const { name, email, plan, ownerEmail, dbUrl } = body;
+    const { name, slug, useCase, companySize, industry } = body;
 
-    if (!name || !email || !plan || !ownerEmail || !dbUrl) {
+    if (!name) {
       return NextResponse.json(
-        { error: 'Missing required fields: name, email, plan, ownerEmail, dbUrl' },
+        { error: 'Missing required field: name' },
         { status: 400 }
       );
     }
 
-    // Generate logo from first letter of company name
-    const logo = name.charAt(0).toUpperCase();
+    // Generate slug if not provided
+    const tenantSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-    // Generate random color for logo
-    const colors = ['#FF5722', '#2196F3', '#9C27B0', '#795548', '#607D8B', '#FF9800', '#424242'];
-    const logoColor = colors[Math.floor(Math.random() * colors.length)];
+    // Check if slug exists
+    const existing = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.slug, tenantSlug))
+      .limit(1);
 
-    // Generate unique setup token
-    const setupToken = crypto.randomBytes(32).toString('hex');
+    if (existing.length > 0) {
+      return NextResponse.json(
+        { error: 'A tenant with this slug already exists' },
+        { status: 400 }
+      );
+    }
 
-    // Generate slug from company name
-    const baseSlug = generateSlug(name);
-
-    // Check for existing slugs to ensure uniqueness
-    const existingCustomers = await db
-      .select({ slug: customers.slug })
-      .from(customers)
-      .where(like(customers.slug, `${baseSlug}%`));
-
-    const existingSlugs = existingCustomers.map(c => c.slug);
-    const uniqueSlug = makeSlugUnique(baseSlug, existingSlugs);
-
-    // Insert new customer
-    const [newCustomer] = await db
-      .insert(customers)
+    // Insert new tenant
+    const [newTenant] = await db
+      .insert(tenants)
       .values({
         name,
-        email,
-        plan,
-        ownerEmail,
-        dbUrl,
-        slug: uniqueSlug,
-        setupToken,
-        logo,
-        logoColor,
-        status: 'pending',
-        lastActive: new Date(),
+        slug: tenantSlug,
+        status: 'pending_onboarding',
+        useCase,
+        companySize,
+        industry,
       })
       .returning();
 
-    return NextResponse.json(newCustomer, { status: 201 });
+    return NextResponse.json(newTenant, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating customer:', error);
+    console.error('Error creating tenant:', error);
     if (error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -167,7 +181,7 @@ export async function POST(request: NextRequest) {
       );
     }
     return NextResponse.json(
-      { error: 'Failed to create customer' },
+      { error: 'Failed to create tenant' },
       { status: 500 }
     );
   }

@@ -65,9 +65,10 @@ export async function GET(request: Request) {
   try {
     // Dynamic import to avoid issues if database is not configured
     const { db } = await import('@/lib/db');
+    const { sql } = await import('drizzle-orm');
 
     // Execute a simple query to verify connectivity
-    await db.execute(new (await import('drizzle-orm')).sql`SELECT 1`);
+    await db.execute(sql`SELECT 1`);
 
     checks.push({
       name: 'database',

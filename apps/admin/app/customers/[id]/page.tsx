@@ -13,22 +13,26 @@ import SuspendCustomerModal from "@/components/SuspendCustomerModal";
 import DeleteCustomerModal from "@/components/DeleteCustomerModal";
 import { useTheme } from "@/context/ThemeContext";
 
-interface Customer {
+interface Dataroom {
   id: string;
   name: string;
   email: string;
+  slug: string;
   plan: string;
   status: "active" | "inactive" | "pending";
+  rawStatus: string;
   lastActive: string;
   logo: string;
   logoColor: string;
-  ownerEmail: string;
-  dbUrl: string;
-  slug: string;
-  setupToken: string;
-  setupCompleted: string | null;
   createdAt: string;
   updatedAt: string;
+  // Provisioning details
+  provisioningProvider: string | null;
+  supabaseProjectRef: string | null;
+  cloudSqlInstanceName: string | null;
+  useCase: string | null;
+  companySize: string | null;
+  industry: string | null;
 }
 
 interface User {
@@ -56,13 +60,13 @@ interface Subscription {
   updatedAt: string;
 }
 
-export default function CustomerProfilePage() {
+export default function DataroomProfilePage() {
   const router = useRouter();
   const params = useParams();
   const { theme } = useTheme();
   const isLight = theme === "light";
 
-  const [activeTab, setActiveTab] = useState<"users" | "subscription" | "settings">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "provisioning" | "subscription" | "settings">("users");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -78,7 +82,7 @@ export default function CustomerProfilePage() {
   const [setupUrlCopied, setSetupUrlCopied] = useState(false);
 
   // API state
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [dataroom, setDataroom] = useState<Dataroom | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,9 +108,9 @@ export default function CustomerProfilePage() {
   // Calculate total pages from API data
   const totalPages = usersTotalPages;
 
-  // Fetch customer data from API
+  // Fetch dataroom data from API
   useEffect(() => {
-    const fetchCustomer = async () => {
+    const fetchDataroom = async () => {
       if (!params.id) return;
 
       try {
@@ -115,29 +119,29 @@ export default function CustomerProfilePage() {
 
         if (!response.ok) {
           if (response.status === 404) {
-            setError('Customer not found');
+            setError('Dataroom not found');
           } else {
-            setError('Failed to load customer');
+            setError('Failed to load dataroom');
           }
           return;
         }
 
         const data = await response.json();
-        setCustomer(data);
+        setDataroom(data);
         setSettingsData({
           companyName: data.name,
-          companyEmail: data.email,
-          ownerEmail: data.ownerEmail,
+          companyEmail: data.slug,
+          ownerEmail: '',
         });
       } catch (err) {
-        console.error('Error fetching customer:', err);
-        setError('Failed to load customer');
+        console.error('Error fetching dataroom:', err);
+        setError('Failed to load dataroom');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCustomer();
+    fetchDataroom();
   }, [params.id]);
 
   // Fetch users from API
@@ -371,74 +375,60 @@ export default function CustomerProfilePage() {
     }
   };
 
-  const handleSuspendCustomer = async () => {
-    if (!customer) return;
+  const handleSuspendDataroom = async () => {
+    if (!dataroom) return;
 
     try {
       // Toggle between inactive and active
-      const newStatus = customer.status === 'inactive' ? 'active' : 'inactive';
+      const newStatus = dataroom.status === 'inactive' ? 'active' : 'inactive';
 
-      const response = await fetch(`/api/customers/${customer.id}`, {
+      const response = await fetch(`/api/customers/${dataroom.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update customer status');
+        throw new Error('Failed to update dataroom status');
       }
 
-      // Refresh customer data
-      const updatedCustomer = await response.json();
-      setCustomer(updatedCustomer);
+      // Refresh dataroom data
+      const refreshResponse = await fetch(`/api/customers/${dataroom.id}`);
+      const updatedDataroom = await refreshResponse.json();
+      setDataroom(updatedDataroom);
 
       setSuccessMessage(
         newStatus === 'active'
-          ? "Customer successfully activated"
-          : "Customer successfully suspended"
+          ? "Dataroom successfully activated"
+          : "Dataroom successfully suspended"
       );
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
       }, 3000);
     } catch (err) {
-      console.error('Error updating customer status:', err);
-      alert('Failed to update customer status. Please try again.');
+      console.error('Error updating dataroom status:', err);
+      alert('Failed to update dataroom status. Please try again.');
     }
   };
 
-  const handleDeleteCustomer = async () => {
-    if (!customer) return;
+  const handleDeleteDataroom = async () => {
+    if (!dataroom) return;
 
     try {
-      const response = await fetch(`/api/customers/${customer.id}`, {
+      const response = await fetch(`/api/customers/${dataroom.id}`, {
         method: 'DELETE',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete customer');
+        throw new Error('Failed to delete dataroom');
       }
 
-      // Redirect to customers list
+      // Redirect to datarooms list
       router.push("/customers");
     } catch (err) {
-      console.error('Error deleting customer:', err);
-      alert('Failed to delete customer. Please try again.');
-    }
-  };
-
-  const handleCopySetupUrl = async () => {
-    if (!customer) return;
-
-    const customerAppUrl = process.env.NEXT_PUBLIC_CUSTOMER_APP_URL || 'http://localhost:3001';
-    const setupUrl = `${customerAppUrl}/${customer.slug}/setup?token=${customer.setupToken}`;
-
-    try {
-      await navigator.clipboard.writeText(setupUrl);
-      setSetupUrlCopied(true);
-      setTimeout(() => setSetupUrlCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error('Error deleting dataroom:', err);
+      alert('Failed to delete dataroom. Please try again.');
     }
   };
 
@@ -451,7 +441,7 @@ export default function CustomerProfilePage() {
           <Header onMenuClick={() => setMobileMenuOpen(true)} />
           <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 flex items-center justify-center">
             <div className={`text-sm ${isLight ? "text-gray-600" : "text-zinc-400"}`}>
-              Loading customer...
+              Loading dataroom...
             </div>
           </main>
         </div>
@@ -460,7 +450,7 @@ export default function CustomerProfilePage() {
   }
 
   // Show error state
-  if (error || !customer) {
+  if (error || !dataroom) {
     return (
       <div className={`flex min-h-screen ${isLight ? "bg-gray-50" : "bg-zinc-950"}`}>
         <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
@@ -469,7 +459,7 @@ export default function CustomerProfilePage() {
           <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 flex items-center justify-center">
             <div className="text-center">
               <div className={`text-sm mb-4 ${isLight ? "text-gray-600" : "text-zinc-400"}`}>
-                {error || 'Customer not found'}
+                {error || 'Dataroom not found'}
               </div>
               <button
                 onClick={() => router.push("/customers")}
@@ -479,7 +469,7 @@ export default function CustomerProfilePage() {
                     : "bg-blue-600 hover:bg-blue-700"
                 }`}
               >
-                Back to Customers
+                Back to Datarooms
               </button>
             </div>
           </main>
@@ -512,11 +502,11 @@ export default function CustomerProfilePage() {
               isLight ? "text-gray-600" : "text-zinc-400"
             }`}>
               <Link href="/customers" className="hover:underline">
-                Customers
+                Datarooms
               </Link>
               <span>›</span>
               <span className={isLight ? "text-gray-900" : "text-white"}>
-                Customer Profile
+                {dataroom.name}
               </span>
             </div>
           </div>
@@ -529,141 +519,99 @@ export default function CustomerProfilePage() {
             }`}
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Customers
+            Back to Datarooms
           </button>
 
-          {/* Customer Header */}
+          {/* Dataroom Header */}
           <div className="mb-4 md:mb-6">
             <div className="flex items-center gap-3 md:gap-4">
               <div
                 className="flex h-12 w-12 md:h-16 md:w-16 items-center justify-center rounded-xl text-white font-bold text-lg md:text-2xl"
-                style={{ backgroundColor: customer.logoColor }}
+                style={{ backgroundColor: dataroom.logoColor }}
               >
-                {customer.logo}
+                {dataroom.logo}
               </div>
               <div>
                 <h1 className={`text-lg md:text-2xl font-bold ${
                   isLight ? "text-gray-900" : "text-white"
                 }`}>
-                  {customer.name}
+                  {dataroom.name}
                 </h1>
                 <p className={`text-xs md:text-sm ${
                   isLight ? "text-gray-600" : "text-zinc-400"
                 }`}>
-                  {customer.email}
+                  /{dataroom.slug}
                 </p>
               </div>
+              {/* Status Badge */}
+              <span
+                className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${
+                  dataroom.status === "active"
+                    ? isLight
+                      ? "bg-green-100 text-green-700 border border-green-200"
+                      : "bg-green-950/50 text-green-400 border border-green-900"
+                    : dataroom.status === "pending"
+                    ? isLight
+                      ? "bg-orange-100 text-orange-700 border border-orange-200"
+                      : "bg-orange-950/50 text-orange-400 border border-orange-900"
+                    : isLight
+                    ? "bg-gray-100 text-gray-700 border border-gray-200"
+                    : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                }`}
+              >
+                {dataroom.rawStatus || dataroom.status}
+              </span>
             </div>
           </div>
 
           {/* Tabs - Mobile: Full-width with underline, Desktop: Pill style */}
           {/* Mobile Tabs */}
-          <div className={`md:hidden flex mb-4 -mx-4 px-4 border-b ${
+          <div className={`md:hidden flex mb-4 -mx-4 px-4 border-b overflow-x-auto ${
             isLight ? "border-gray-200" : "border-zinc-800"
           }`}>
-            <button
-              onClick={() => setActiveTab("users")}
-              className={`flex-1 py-2 text-sm font-medium transition-colors relative ${
-                activeTab === "users"
-                  ? isLight
-                    ? "text-gray-900"
-                    : "text-white"
-                  : isLight
-                  ? "text-gray-500"
-                  : "text-zinc-500"
-              }`}
-            >
-              Users
-              {activeTab === "users" && (
-                <span className={`absolute bottom-0 left-0 right-0 h-[2px] ${
-                  isLight ? "bg-gray-900" : "bg-white"
-                }`} />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("subscription")}
-              className={`flex-1 py-2 text-sm font-medium transition-colors relative ${
-                activeTab === "subscription"
-                  ? isLight
-                    ? "text-gray-900"
-                    : "text-white"
-                  : isLight
-                  ? "text-gray-500"
-                  : "text-zinc-500"
-              }`}
-            >
-              Subscription
-              {activeTab === "subscription" && (
-                <span className={`absolute bottom-0 left-0 right-0 h-[2px] ${
-                  isLight ? "bg-gray-900" : "bg-white"
-                }`} />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`flex-1 py-2 text-sm font-medium transition-colors relative ${
-                activeTab === "settings"
-                  ? isLight
-                    ? "text-gray-900"
-                    : "text-white"
-                  : isLight
-                  ? "text-gray-500"
-                  : "text-zinc-500"
-              }`}
-            >
-              Settings
-              {activeTab === "settings" && (
-                <span className={`absolute bottom-0 left-0 right-0 h-[2px] ${
-                  isLight ? "bg-gray-900" : "bg-white"
-                }`} />
-              )}
-            </button>
+            {(["users", "provisioning", "subscription", "settings"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-2 text-sm font-medium transition-colors relative whitespace-nowrap px-2 ${
+                  activeTab === tab
+                    ? isLight
+                      ? "text-gray-900"
+                      : "text-white"
+                    : isLight
+                    ? "text-gray-500"
+                    : "text-zinc-500"
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {activeTab === tab && (
+                  <span className={`absolute bottom-0 left-0 right-0 h-[2px] ${
+                    isLight ? "bg-gray-900" : "bg-white"
+                  }`} />
+                )}
+              </button>
+            ))}
           </div>
 
           {/* Desktop Tabs */}
           <div className="hidden md:flex gap-1 mb-4">
-            <button
-              onClick={() => setActiveTab("users")}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "users"
-                  ? isLight
-                    ? "bg-gray-100 text-gray-900"
-                    : "bg-zinc-800 text-white"
-                  : isLight
-                  ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
-              }`}
-            >
-              Users
-            </button>
-            <button
-              onClick={() => setActiveTab("subscription")}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "subscription"
-                  ? isLight
-                    ? "bg-gray-100 text-gray-900"
-                    : "bg-zinc-800 text-white"
-                  : isLight
-                  ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
-              }`}
-            >
-              Subscription
-            </button>
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "settings"
-                  ? isLight
-                    ? "bg-gray-100 text-gray-900"
-                    : "bg-zinc-800 text-white"
-                  : isLight
-                  ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
-              }`}
-            >
-              Settings
-            </button>
+            {(["users", "provisioning", "subscription", "settings"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === tab
+                    ? isLight
+                      ? "bg-gray-100 text-gray-900"
+                      : "bg-zinc-800 text-white"
+                    : isLight
+                    ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
           </div>
 
           {/* Search and Add User - Mobile: Stack, Desktop: Inline */}
@@ -1197,6 +1145,263 @@ export default function CustomerProfilePage() {
             </div>
           )}
 
+          {/* Provisioning Tab Content */}
+          {activeTab === "provisioning" && (
+            <div className="space-y-6">
+              {/* Provisioning Status */}
+              <div className={`rounded-lg border ${
+                isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
+              }`}>
+                <div className={`border-b p-6 ${
+                  isLight ? "border-gray-200" : "border-zinc-800"
+                }`}>
+                  <h3 className={`text-lg font-semibold ${
+                    isLight ? "text-gray-900" : "text-white"
+                  }`}>
+                    Provisioning Status
+                  </h3>
+                  <p className={`mt-1 text-sm ${
+                    isLight ? "text-gray-600" : "text-zinc-400"
+                  }`}>
+                    Infrastructure resources provisioned for this dataroom.
+                  </p>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Provider */}
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${
+                        isLight ? "text-gray-500" : "text-zinc-500"
+                      }`}>
+                        Provider
+                      </label>
+                      <p className={`text-sm font-medium ${
+                        isLight ? "text-gray-900" : "text-white"
+                      }`}>
+                        {dataroom.provisioningProvider ? (
+                          <span className="capitalize">{dataroom.provisioningProvider}</span>
+                        ) : (
+                          <span className={isLight ? "text-gray-400" : "text-zinc-500"}>Not provisioned</span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${
+                        isLight ? "text-gray-500" : "text-zinc-500"
+                      }`}>
+                        Status
+                      </label>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          dataroom.rawStatus === "active"
+                            ? isLight
+                              ? "bg-green-100 text-green-700"
+                              : "bg-green-950/50 text-green-400"
+                            : dataroom.rawStatus === "provisioning"
+                            ? isLight
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-blue-950/50 text-blue-400"
+                            : isLight
+                            ? "bg-gray-100 text-gray-700"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}
+                      >
+                        {dataroom.rawStatus || "pending"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Database Resources */}
+              <div className={`rounded-lg border ${
+                isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
+              }`}>
+                <div className={`border-b p-6 ${
+                  isLight ? "border-gray-200" : "border-zinc-800"
+                }`}>
+                  <h3 className={`text-lg font-semibold ${
+                    isLight ? "text-gray-900" : "text-white"
+                  }`}>
+                    Database
+                  </h3>
+                  <p className={`mt-1 text-sm ${
+                    isLight ? "text-gray-600" : "text-zinc-400"
+                  }`}>
+                    Dedicated database instance for this dataroom.
+                  </p>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {dataroom.provisioningProvider === "supabase" && (
+                      <>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${
+                            isLight ? "text-gray-500" : "text-zinc-500"
+                          }`}>
+                            Supabase Project Ref
+                          </label>
+                          <p className={`text-sm font-mono ${
+                            isLight ? "text-gray-900" : "text-white"
+                          }`}>
+                            {dataroom.supabaseProjectRef || "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${
+                            isLight ? "text-gray-500" : "text-zinc-500"
+                          }`}>
+                            Supabase Dashboard
+                          </label>
+                          {dataroom.supabaseProjectRef ? (
+                            <a
+                              href={`https://supabase.com/dashboard/project/${dataroom.supabaseProjectRef}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`text-sm ${
+                                isLight ? "text-blue-600 hover:text-blue-700" : "text-blue-400 hover:text-blue-300"
+                              }`}
+                            >
+                              Open Dashboard →
+                            </a>
+                          ) : (
+                            <span className={`text-sm ${isLight ? "text-gray-400" : "text-zinc-500"}`}>—</span>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {dataroom.provisioningProvider === "gcp" && (
+                      <>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${
+                            isLight ? "text-gray-500" : "text-zinc-500"
+                          }`}>
+                            Cloud SQL Instance
+                          </label>
+                          <p className={`text-sm font-mono ${
+                            isLight ? "text-gray-900" : "text-white"
+                          }`}>
+                            {dataroom.cloudSqlInstanceName || "—"}
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {dataroom.provisioningProvider === "mock" && (
+                      <div className="col-span-2">
+                        <div className={`rounded-lg p-4 ${
+                          isLight ? "bg-yellow-50 border border-yellow-200" : "bg-yellow-950/30 border border-yellow-900"
+                        }`}>
+                          <p className={`text-sm ${
+                            isLight ? "text-yellow-700" : "text-yellow-400"
+                          }`}>
+                            This dataroom is using mock provisioning (development mode). No actual database resources have been created.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {!dataroom.provisioningProvider && (
+                      <div className="col-span-2">
+                        <div className={`rounded-lg p-4 ${
+                          isLight ? "bg-gray-50 border border-gray-200" : "bg-zinc-800 border border-zinc-700"
+                        }`}>
+                          <p className={`text-sm ${
+                            isLight ? "text-gray-600" : "text-zinc-400"
+                          }`}>
+                            No database has been provisioned for this dataroom yet.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Dataroom Info */}
+              <div className={`rounded-lg border ${
+                isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
+              }`}>
+                <div className={`border-b p-6 ${
+                  isLight ? "border-gray-200" : "border-zinc-800"
+                }`}>
+                  <h3 className={`text-lg font-semibold ${
+                    isLight ? "text-gray-900" : "text-white"
+                  }`}>
+                    Dataroom Info
+                  </h3>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${
+                        isLight ? "text-gray-500" : "text-zinc-500"
+                      }`}>
+                        Use Case
+                      </label>
+                      <p className={`text-sm capitalize ${
+                        isLight ? "text-gray-900" : "text-white"
+                      }`}>
+                        {dataroom.useCase?.replace(/_/g, ' ') || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${
+                        isLight ? "text-gray-500" : "text-zinc-500"
+                      }`}>
+                        Company Size
+                      </label>
+                      <p className={`text-sm ${
+                        isLight ? "text-gray-900" : "text-white"
+                      }`}>
+                        {dataroom.companySize || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${
+                        isLight ? "text-gray-500" : "text-zinc-500"
+                      }`}>
+                        Industry
+                      </label>
+                      <p className={`text-sm ${
+                        isLight ? "text-gray-900" : "text-white"
+                      }`}>
+                        {dataroom.industry || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${
+                        isLight ? "text-gray-500" : "text-zinc-500"
+                      }`}>
+                        Created
+                      </label>
+                      <p className={`text-sm ${
+                        isLight ? "text-gray-900" : "text-white"
+                      }`}>
+                        {new Date(dataroom.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${
+                        isLight ? "text-gray-500" : "text-zinc-500"
+                      }`}>
+                        Last Updated
+                      </label>
+                      <p className={`text-sm ${
+                        isLight ? "text-gray-900" : "text-white"
+                      }`}>
+                        {new Date(dataroom.updatedAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Subscription Tab Content */}
           {activeTab === "subscription" && (
             <div className={`rounded-lg border overflow-hidden ${
@@ -1411,7 +1616,7 @@ export default function CustomerProfilePage() {
           {/* Settings Tab Content */}
           {activeTab === "settings" && (
             <div className="space-y-6">
-              {/* Customer Details Section */}
+              {/* Dataroom Details Section */}
               <div className={`rounded-lg border ${
                 isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
               }`}>
@@ -1421,12 +1626,12 @@ export default function CustomerProfilePage() {
                   <h3 className={`text-lg font-semibold ${
                     isLight ? "text-gray-900" : "text-white"
                   }`}>
-                    Customer Details
+                    Dataroom Details
                   </h3>
                   <p className={`mt-1 text-sm ${
                     isLight ? "text-gray-600" : "text-zinc-400"
                   }`}>
-                    Edit the core profile and contact information for this Customer.
+                    Edit the core profile information for this dataroom.
                   </p>
                 </div>
                 <div className="p-6 space-y-4">
@@ -1435,7 +1640,7 @@ export default function CustomerProfilePage() {
                       <label className={`block text-sm font-medium mb-2 ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        Company Name
+                        Name
                       </label>
                       <input
                         type="text"
@@ -1452,98 +1657,21 @@ export default function CustomerProfilePage() {
                       <label className={`block text-sm font-medium mb-2 ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        Company Email
+                        Slug (URL)
                       </label>
-                      <input
-                        type="email"
-                        value={settingsData.companyEmail}
-                        onChange={(e) => setSettingsData({ ...settingsData, companyEmail: e.target.value })}
-                        className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                          isLight
-                            ? "border-gray-300 bg-white text-gray-900 focus:border-blue-500 focus:ring-blue-500/20"
-                            : "border-zinc-700 bg-zinc-800 text-white focus:border-blue-500 focus:ring-blue-500/20"
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Customer Setup URL Section */}
-              <div className={`rounded-lg border ${
-                isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
-              }`}>
-                <div className={`border-b p-6 ${
-                  isLight ? "border-gray-200" : "border-zinc-800"
-                }`}>
-                  <h3 className={`text-lg font-semibold ${
-                    isLight ? "text-gray-900" : "text-white"
-                  }`}>
-                    Customer Setup URL
-                  </h3>
-                  <p className={`mt-1 text-sm ${
-                    isLight ? "text-gray-600" : "text-zinc-400"
-                  }`}>
-                    Share this URL with the customer to access their application setup.
-                  </p>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${
-                      isLight ? "text-gray-900" : "text-white"
-                    }`}>
-                      Setup URL
-                    </label>
-                    <div className="flex gap-2">
-                      <div className={`flex-1 rounded-md border px-3 py-2 text-sm font-mono break-all ${
+                      <div className={`w-full rounded-md border px-3 py-2 text-sm font-mono ${
                         isLight
                           ? "border-gray-300 bg-gray-50 text-gray-600"
                           : "border-zinc-700 bg-zinc-800 text-zinc-400"
                       }`}>
-                        {typeof window !== 'undefined' && customer.slug && customer.setupToken
-                          ? `${process.env.NEXT_PUBLIC_CUSTOMER_APP_URL || 'http://localhost:3001'}/${customer.slug}/setup?token=${customer.setupToken}`
-                          : 'Loading...'
-                        }
+                        /{dataroom.slug}
                       </div>
-                      <button
-                        onClick={handleCopySetupUrl}
-                        className={`flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                          isLight
-                            ? "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                            : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                        }`}
-                      >
-                        {setupUrlCopied ? (
-                          <>
-                            <Check className="h-4 w-4" />
-                            Copied
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-4 w-4" />
-                            Copy
-                          </>
-                        )}
-                      </button>
                     </div>
-                    <p className={`mt-2 text-sm ${
-                      isLight ? "text-gray-600" : "text-zinc-400"
-                    }`}>
-                      Customer will use this URL to access and configure their application instance.
-                      {customer.setupCompleted && (
-                        <span className={`ml-2 inline-flex items-center gap-1 ${
-                          isLight ? "text-green-600" : "text-green-400"
-                        }`}>
-                          <CheckCircle className="h-3.5 w-3.5" />
-                          Setup completed on {new Date(customer.setupCompleted).toLocaleDateString()}
-                        </span>
-                      )}
-                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Customer Logo Section */}
+              {/* Dataroom Logo Section */}
               <div className={`rounded-lg border ${
                 isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
               }`}>
@@ -1553,21 +1681,21 @@ export default function CustomerProfilePage() {
                   <h3 className={`text-lg font-semibold ${
                     isLight ? "text-gray-900" : "text-white"
                   }`}>
-                    Customer Logo
+                    Dataroom Logo
                   </h3>
                   <p className={`mt-1 text-sm ${
                     isLight ? "text-gray-600" : "text-zinc-400"
                   }`}>
-                    Logo used for this Customer's branding and reports.
+                    Logo used for branding and reports.
                   </p>
                 </div>
                 <div className="p-6">
                   <div className="flex items-center gap-4">
                     <div
                       className="flex h-16 w-16 items-center justify-center rounded-full text-white font-bold text-2xl"
-                      style={{ backgroundColor: customer.logoColor }}
+                      style={{ backgroundColor: dataroom.logoColor }}
                     >
-                      {customer.logo}
+                      {dataroom.logo}
                     </div>
                     <div className="flex items-center gap-3">
                       <button className={`flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
@@ -1590,101 +1718,6 @@ export default function CustomerProfilePage() {
                 </div>
               </div>
 
-              {/* Database Configuration Section */}
-              <div className={`rounded-lg border ${
-                isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
-              }`}>
-                <div className={`border-b p-6 ${
-                  isLight ? "border-gray-200" : "border-zinc-800"
-                }`}>
-                  <h3 className={`text-lg font-semibold ${
-                    isLight ? "text-gray-900" : "text-white"
-                  }`}>
-                    Database Configuration
-                  </h3>
-                  <p className={`mt-1 text-sm ${
-                    isLight ? "text-gray-600" : "text-zinc-400"
-                  }`}>
-                    Database connection details for this customer's application.
-                  </p>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${
-                      isLight ? "text-gray-900" : "text-white"
-                    }`}>
-                      Database URL
-                    </label>
-                    <div className={`relative w-full rounded-md border px-3 py-2 text-sm font-mono ${
-                      isLight
-                        ? "border-gray-300 bg-gray-50 text-gray-600"
-                        : "border-zinc-700 bg-zinc-800 text-zinc-400"
-                    }`}>
-                      {customer.dbUrl ? (
-                        <span className="break-all">
-                          {customer.dbUrl.substring(0, 20)}{'*'.repeat(Math.min(customer.dbUrl.length - 40, 20))}{customer.dbUrl.substring(customer.dbUrl.length - 20)}
-                        </span>
-                      ) : (
-                        <span className={isLight ? "text-gray-400" : "text-zinc-500"}>
-                          No database URL configured
-                        </span>
-                      )}
-                    </div>
-                    <p className={`mt-2 text-sm ${
-                      isLight ? "text-gray-600" : "text-zinc-400"
-                    }`}>
-                      Connection string used by this customer's application instance.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Transfer Ownership Section */}
-              <div className={`rounded-lg border ${
-                isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
-              }`}>
-                <div className={`border-b p-6 ${
-                  isLight ? "border-gray-200" : "border-zinc-800"
-                }`}>
-                  <h3 className={`text-lg font-semibold ${
-                    isLight ? "text-gray-900" : "text-white"
-                  }`}>
-                    Transfer Ownership
-                  </h3>
-                  <p className={`mt-1 text-sm ${
-                    isLight ? "text-gray-600" : "text-zinc-400"
-                  }`}>
-                    Assign ownership of this Customer to a different user.
-                  </p>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${
-                      isLight ? "text-gray-900" : "text-white"
-                    }`}>
-                      Owner's Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={settingsData.ownerEmail}
-                      onChange={(e) => setSettingsData({ ...settingsData, ownerEmail: e.target.value })}
-                      className={`w-full max-w-md rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                        isLight
-                          ? "border-gray-300 bg-white text-gray-900 focus:border-blue-500 focus:ring-blue-500/20"
-                          : "border-zinc-700 bg-zinc-800 text-white focus:border-blue-500 focus:ring-blue-500/20"
-                      }`}
-                    />
-                  </div>
-                  <button className={`rounded-md px-6 py-2 text-sm font-medium text-white transition-colors ${
-                    isLight
-                      ? "bg-gray-900 hover:bg-gray-800"
-                      : "bg-white text-gray-900 hover:bg-gray-100"
-                  }`}>
-                    Transfer Ownership
-                  </button>
-                </div>
-              </div>
-
               {/* Administrative Actions Section */}
               <div className={`rounded-lg border ${
                 isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
@@ -1704,49 +1737,49 @@ export default function CustomerProfilePage() {
                   </p>
                 </div>
                 <div className="p-6 space-y-6">
-                  {/* Suspend/Activate Customer */}
+                  {/* Suspend/Activate Dataroom */}
                   <div>
                     <h4 className={`text-sm font-semibold mb-2 ${
                       isLight ? "text-gray-900" : "text-white"
                     }`}>
-                      {customer.status === 'inactive' ? 'Activate Customer' : 'Suspend Customer'}
+                      {dataroom.status === 'inactive' ? 'Activate Dataroom' : 'Suspend Dataroom'}
                     </h4>
                     <button
                       onClick={() => setIsSuspendModalOpen(true)}
                       className={`rounded-md px-6 py-2 text-sm font-medium text-white transition-colors mb-2 ${
-                        customer.status === 'inactive'
+                        dataroom.status === 'inactive'
                           ? 'bg-green-600 hover:bg-green-700'
                           : 'bg-red-600 hover:bg-red-700'
                       }`}
                     >
-                      {customer.status === 'inactive' ? 'Activate Customer' : 'Suspend Customer'}
+                      {dataroom.status === 'inactive' ? 'Activate Dataroom' : 'Suspend Dataroom'}
                     </button>
                     <p className={`text-sm ${
                       isLight ? "text-gray-600" : "text-zinc-400"
                     }`}>
-                      {customer.status === 'inactive'
-                        ? 'Reactivate customer access and restore full service availability.'
+                      {dataroom.status === 'inactive'
+                        ? 'Reactivate dataroom access and restore full service availability.'
                         : 'Temporarily suspend all activity and block user access. This action can be reversed.'}
                     </p>
                   </div>
 
-                  {/* Delete Customer */}
+                  {/* Delete Dataroom */}
                   <div>
                     <h4 className={`text-sm font-semibold mb-2 ${
                       isLight ? "text-gray-900" : "text-white"
                     }`}>
-                      Delete Customer
+                      Delete Dataroom
                     </h4>
                     <button
                       onClick={() => setIsDeleteModalOpen(true)}
                       className="rounded-md bg-red-600 px-6 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors mb-2"
                     >
-                      Delete Customer
+                      Delete Dataroom
                     </button>
                     <p className={`text-sm ${
                       isLight ? "text-gray-600" : "text-zinc-400"
                     }`}>
-                      Permanently delete the Customer and all its data. This action is irreversible.
+                      Permanently delete the dataroom and all its data. This action is irreversible.
                     </p>
                   </div>
                 </div>
@@ -1785,21 +1818,21 @@ export default function CustomerProfilePage() {
         userName={selectedUser?.name || ''}
       />
 
-      {/* Suspend/Activate Customer Modal */}
+      {/* Suspend/Activate Dataroom Modal */}
       <SuspendCustomerModal
         isOpen={isSuspendModalOpen}
         onClose={() => setIsSuspendModalOpen(false)}
-        onConfirm={handleSuspendCustomer}
-        customerName={customer.name}
-        currentStatus={customer.status}
+        onConfirm={handleSuspendDataroom}
+        customerName={dataroom.name}
+        currentStatus={dataroom.status}
       />
 
-      {/* Delete Customer Modal */}
+      {/* Delete Dataroom Modal */}
       <DeleteCustomerModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleDeleteCustomer}
-        customerName={customer.name}
+        onConfirm={handleDeleteDataroom}
+        customerName={dataroom.name}
       />
 
       {/* Success Toast */}
