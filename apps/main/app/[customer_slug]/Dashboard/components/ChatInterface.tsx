@@ -48,7 +48,7 @@ const formatFileSize = (bytes: number): string => {
 };
 
 export function ChatInterface({ selectedFile }: ChatInterfaceProps) {
-  const { activeChat, activeChatId, createNewChat, sendMessage, isSending, chats } =
+  const { activeChat, activeChatId, createNewChat, sendMessage, isSending, chats, dataroomId } =
     useChatContext();
   const { files: userFilesFromContext } = useFiles();
   const [inputValue, setInputValue] = useState("");
@@ -141,12 +141,13 @@ export function ChatInterface({ selectedFile }: ChatInterfaceProps) {
   }, [userFilesFromContext]);
 
   // Create a new chat only if there are no chats at all (initial app load)
+  // Wait for dataroomId to be loaded first
   useEffect(() => {
-    if (!hasInitialized.current && !activeChatId && chats.length === 0) {
+    if (!hasInitialized.current && !activeChatId && chats.length === 0 && dataroomId) {
       hasInitialized.current = true;
       createNewChat();
     }
-  }, [activeChatId, chats.length, createNewChat]);
+  }, [activeChatId, chats.length, createNewChat, dataroomId]);
 
   const messages = useMemo(
     () => activeChat?.messages || [],

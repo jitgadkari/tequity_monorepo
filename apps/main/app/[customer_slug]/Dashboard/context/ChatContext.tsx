@@ -80,7 +80,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Otherwise, get from user's datarooms
+      // Try to get from user's datarooms
       try {
         const response = await authFetch<{
           datarooms: Array<{ id: string; name: string; role: string }>;
@@ -90,9 +90,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           const firstDataroom = response.data.datarooms[0];
           setDataroomId(firstDataroom.id);
           localStorage.setItem('tequity_dataroom_id', firstDataroom.id);
+          return;
         }
       } catch (error) {
-        console.error('Error loading dataroom ID:', error);
+        console.error('Error loading dataroom ID from /auth/me:', error);
+      }
+
+      // Fallback: Use tenant slug from URL as dataroom ID (for mock mode)
+      // This allows the chat to work even when tenant DB isn't fully provisioned
+      const tenantSlug = window.location.pathname.split('/')[1];
+      if (tenantSlug && tenantSlug !== 'workspaces' && tenantSlug !== 'signin') {
+        console.log('Using tenant slug as fallback dataroom ID:', tenantSlug);
+        setDataroomId(tenantSlug);
+        localStorage.setItem('tequity_dataroom_id', tenantSlug);
       }
     };
 

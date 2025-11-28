@@ -6,3 +6,6 @@ export * from './subscriptions';
 export * from './tokens';
 export * from './onboarding';
 export * from './platform-admins';
+
+// Relations for Drizzle query builder
+export * from './relations';

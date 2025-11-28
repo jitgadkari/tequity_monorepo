@@ -9,15 +9,29 @@ import {
   FileText,
   Folder,
 } from "lucide-react";
-import { Document, Page, pdfjs } from "react-pdf";
 import { FileItem } from "./filegrid";
 // import { useSidebar } from "@/components/ui/sidebar";
 import Image from "next/image";
 
-// Set up the worker for react-pdf - only on client side
-if (typeof window !== "undefined") {
+// Lazy import react-pdf to avoid SSR issues
+import type { DocumentProps, PageProps } from "react-pdf";
+
+let Document: React.ComponentType<DocumentProps> | null = null;
+let Page: React.ComponentType<PageProps> | null = null;
+let pdfjs: typeof import("pdfjs-dist") | null = null;
+
+// Initialize PDF.js only on client side
+const initPdfJs = async () => {
+  if (typeof window === "undefined") return;
+  if (Document && Page && pdfjs) return; // Already initialized
+
+  const reactPdf = await import("react-pdf");
+  Document = reactPdf.Document;
+  Page = reactPdf.Page;
+  pdfjs = reactPdf.pdfjs;
+
   pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-}
+};
 
 interface PDFViewerProps {
   isOpen: boolean;
@@ -40,7 +54,17 @@ export function PDFViewer({
   const [isDragging, setIsDragging] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isPdfReady, setIsPdfReady] = useState(false);
+  const [, forceUpdate] = useState({});
   // const { state } = useSidebar();
+
+  // Initialize PDF.js on mount
+  useEffect(() => {
+    initPdfJs().then(() => {
+      setIsPdfReady(true);
+      forceUpdate({}); // Force re-render after loading
+    });
+  }, []);
 
   // Check if mobile on mount and resize
   useEffect(() => {
@@ -294,46 +318,57 @@ export function PDFViewer({
           {file.type === "PDF" ? (
             file.url ? (
               <div className="p-4">
-                <Document
-                  file={file.url}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  onLoadError={onDocumentLoadError}
-                  loading={
-                    <div className="flex items-center justify-center h-64">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                        <p className="text-sm text-gray-600 dark:text-white">
-                          Loading PDF...
-                        </p>
-                      </div>
+                {!isPdfReady || !Document || !Page ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-sm text-gray-600 dark:text-white">
+                        Loading PDF viewer...
+                      </p>
                     </div>
-                  }
-                  error={
-                    <div className="flex items-center justify-center h-64">
-                      <div className="text-center bg-white dark:bg-[#09090B] rounded-lg border border-red-200 p-6">
-                        <p className="text-sm text-red-600 mb-2">
-                          Failed to load PDF
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          The PDF file could not be loaded
-                        </p>
+                  </div>
+                ) : (
+                  <Document
+                    file={file.url}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    onLoadError={onDocumentLoadError}
+                    loading={
+                      <div className="flex items-center justify-center h-64">
+                        <div className="text-center">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                          <p className="text-sm text-gray-600 dark:text-white">
+                            Loading PDF...
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  }
-                  className="flex flex-col items-center"
-                >
-                  {Array.from(new Array(numPages), (el, index) => (
-                    <Page
-                      key={`page_${index + 1}`}
-                      pageNumber={index + 1}
-                      width={isMaximized ? 800 : 360}
-                      className="mb-4 shadow-lg"
-                      renderTextLayer={false}
-                      renderAnnotationLayer={false}
-                    />
-                  ))}
-                </Document>
-                {numPages > 0 && (
+                    }
+                    error={
+                      <div className="flex items-center justify-center h-64">
+                        <div className="text-center bg-white dark:bg-[#09090B] rounded-lg border border-red-200 p-6">
+                          <p className="text-sm text-red-600 mb-2">
+                            Failed to load PDF
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            The PDF file could not be loaded
+                          </p>
+                        </div>
+                      </div>
+                    }
+                    className="flex flex-col items-center"
+                  >
+                    {Array.from(new Array(numPages), (el, index) => (
+                      <Page
+                        key={`page_${index + 1}`}
+                        pageNumber={index + 1}
+                        width={isMaximized ? 800 : 360}
+                        className="mb-4 shadow-lg"
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                      />
+                    ))}
+                  </Document>
+                )}
+                {isPdfReady && numPages > 0 && (
                   <div className="text-center mt-4 mb-4 text-sm text-gray-600 bg-white rounded-lg py-2">
                     Total Pages: {numPages}
                   </div>
