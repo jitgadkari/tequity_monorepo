@@ -1,0 +1,3 @@
+name: test-pulumi-gcp
+runtime: nodejs
+description: Test project to verify GCP Cloud SQL and Storage provisioning

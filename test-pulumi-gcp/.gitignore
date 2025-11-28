@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Pulumi
+.pulumi/
+
+# Sensitive files
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
+# Environment
+.env
+.env.*
+
+# Service account keys
+*-service-account*.json
+*credentials*.json
