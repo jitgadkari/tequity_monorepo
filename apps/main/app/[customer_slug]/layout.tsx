@@ -3,6 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
 import { getMasterDb, schema } from '@/lib/master-db';
 import { ProvisioningPage } from './ProvisioningPage';
+import { CheckoutVerification } from './CheckoutVerification';
 
 interface TenantLayoutProps {
   children: React.ReactNode;
@@ -35,6 +36,11 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
     if (tenant.status === 'provisioning') {
       // Show provisioning page with auto-refresh
       return <ProvisioningPage tenantId={tenant.id} />;
+    }
+
+    // For pending_payment status, show checkout verification
+    if (tenant.status === 'pending_payment') {
+      return <CheckoutVerification tenantSlug={customer_slug} />;
     }
 
     // For other non-active states, show error

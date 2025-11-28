@@ -34,31 +34,14 @@ export default function PricingPage() {
     try {
       const planId = planName.toLowerCase();
 
-      // For starter (free) plan, skip checkout
-      if (planId === "starter") {
-        const res = await fetch("/api/platform/checkout/free", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: planId, billing: billingType }),
-          credentials: "include",
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Failed to process");
-        }
-
-        toast.success("Plan activated! Setting up your workspace...");
-        router.push(data.redirectUrl || "/workspaces");
-      } else if (planId === "enterprise") {
+      if (planId === "enterprise") {
         // For enterprise, redirect to contact
         window.location.href =
           "mailto:sales@tequity.io?subject=Enterprise%20Plan%20Inquiry";
         setLoadingPlan(null);
         setSelectedPlan(null);
       } else {
-        // For paid plans, go to checkout
+        // For all paid plans (starter, professional), go to Stripe checkout
         router.push(`/checkout?plan=${planId}&billing=${billingType}`);
       }
     } catch (error) {
