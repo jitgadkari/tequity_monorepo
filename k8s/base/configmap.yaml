@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: tequity
+data:
+  NODE_ENV: "production"
+  GCP_REGION: "us-central1"
+  # These will be overridden in overlays
+  NEXT_PUBLIC_APP_URL: "https://app.tequity.com"
+  NEXT_PUBLIC_ADMIN_URL: "https://admin.tequity.com"

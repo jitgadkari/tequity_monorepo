@@ -1,0 +1,3 @@
+name: tequity-tenant-provisioner
+runtime: nodejs
+description: GCP infrastructure provisioning for Tequity tenants (Cloud SQL + Storage per tenant)

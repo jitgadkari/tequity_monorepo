@@ -1,0 +1,137 @@
+name: Deploy to GKE
+
+on:
+  repository_dispatch:
+    types: [deploy]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: 'Image tag to deploy (leave empty for latest)'
+        required: false
+        type: string
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: tequity-cluster
+  GKE_ZONE: us-central1
+  REGISTRY: us-central1-docker.pkg.dev
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    if: github.event.client_payload.environment == 'staging' || github.event.inputs.environment == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Set image tag
+        id: image-tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.client_payload.sha }}" ]; then
+            echo "tag=${{ github.event.client_payload.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Kustomize images
+        working-directory: k8s/overlays/staging
+        run: |
+          kustomize edit set image \
+            main-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/tequity/main-app:${{ steps.image-tag.outputs.tag }} \
+            admin-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/tequity/admin-app:${{ steps.image-tag.outputs.tag }}
+
+      - name: Deploy to staging
+        run: |
+          kubectl apply -k k8s/overlays/staging
+          kubectl rollout status deployment/main-app -n tequity-staging --timeout=300s
+          kubectl rollout status deployment/admin-app -n tequity-staging --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n tequity-staging
+          kubectl get services -n tequity-staging
+
+  deploy-production:
+    name: Deploy to Production
+    if: github.event.client_payload.environment == 'production' || github.event.inputs.environment == 'production'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Set image tag
+        id: image-tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.client_payload.sha }}" ]; then
+            echo "tag=${{ github.event.client_payload.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Kustomize images
+        working-directory: k8s/overlays/production
+        run: |
+          kustomize edit set image \
+            main-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/tequity/main-app:${{ steps.image-tag.outputs.tag }} \
+            admin-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/tequity/admin-app:${{ steps.image-tag.outputs.tag }}
+
+      - name: Deploy to production
+        run: |
+          kubectl apply -k k8s/overlays/production
+          kubectl rollout status deployment/main-app -n tequity --timeout=300s
+          kubectl rollout status deployment/admin-app -n tequity --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n tequity
+          kubectl get services -n tequity
+          kubectl get ingress -n tequity

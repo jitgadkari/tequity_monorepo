@@ -1,0 +1,7 @@
+config:
+  gcp:project: ${GCP_PROJECT_ID}
+  gcp:region: us-central1
+  tequity:environment: production
+  tequity:databaseTier: db-custom-1-3840
+  tequity:enableBackups: true
+  tequity:deletionProtection: true

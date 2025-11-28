@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tequity
+
+resources:
+  - ../../base
+
+# Image configuration - will be replaced by CI/CD
+images:
+  - name: main-app
+    newName: us-central1-docker.pkg.dev/PROJECT_ID/tequity/main-app
+    newTag: latest
+  - name: admin-app
+    newName: us-central1-docker.pkg.dev/PROJECT_ID/tequity/admin-app
+    newTag: latest
+
+# Production replica counts
+replicas:
+  - name: main-app
+    count: 5
+  - name: admin-app
+    count: 3
+
+# ConfigMap overrides for production
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - NEXT_PUBLIC_APP_URL=https://app.tequity.com
+      - NEXT_PUBLIC_ADMIN_URL=https://admin.tequity.com

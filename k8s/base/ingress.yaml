@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tequity-ingress
+  namespace: tequity
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "tequity-ip"
+    networking.gke.io/managed-certificates: "tequity-cert"
+    kubernetes.io/ingress.allow-http: "false"
+spec:
+  rules:
+    - host: app.tequity.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: main-app
+                port:
+                  number: 80
+    - host: admin.tequity.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-app
+                port:
+                  number: 80
+---
+# Managed Certificate for HTTPS
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: tequity-cert
+  namespace: tequity
+spec:
+  domains:
+    - app.tequity.com
+    - admin.tequity.com
