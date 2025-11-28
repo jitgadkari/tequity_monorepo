@@ -5,21 +5,15 @@ FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies - copy everything and install
 FROM base AS deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
-COPY apps/admin/package.json ./apps/admin/
-COPY packages/database/package.json ./packages/database/
-COPY packages/utils/package.json ./packages/utils/
-COPY packages/types/package.json ./packages/types/
-RUN corepack enable pnpm && pnpm install --frozen-lockfile
+COPY . .
+RUN corepack enable pnpm && pnpm install --no-frozen-lockfile
 
 # Build the application
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/admin/node_modules ./apps/admin/node_modules
-COPY . .
+COPY --from=deps /app ./
 
 # Build with turbo
 ENV NEXT_TELEMETRY_DISABLED=1
