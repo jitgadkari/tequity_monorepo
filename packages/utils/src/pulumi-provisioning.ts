@@ -48,6 +48,8 @@ export interface PulumiProvisioningResult extends GcpProvisioningResult {
 // Re-export the legacy interface name
 export type { PulumiProvisioningResult as ProvisioningResult };
 
+import * as fs from 'fs';
+
 /**
  * Get the path to the Pulumi project
  */
@@ -55,13 +57,26 @@ function getPulumiProjectPath(): string {
   // The Pulumi project is in infrastructure/tenant-provisioner relative to the monorepo root
   // We need to find it relative to where this module is running
   const possiblePaths = [
+    // From monorepo root (when running scripts directly)
     path.resolve(process.cwd(), 'infrastructure/tenant-provisioner'),
-    path.resolve(__dirname, '../../../../infrastructure/tenant-provisioner'),
+    // From apps/main (when running Next.js dev server)
+    path.resolve(process.cwd(), '../../infrastructure/tenant-provisioner'),
+    // From packages/utils/src (relative to this file)
     path.resolve(__dirname, '../../../infrastructure/tenant-provisioner'),
+    // From packages/utils/dist (after compilation)
+    path.resolve(__dirname, '../../../../infrastructure/tenant-provisioner'),
   ];
 
-  // In production, we'll use the first path that exists
-  // For now, return the most likely path
+  // Find the first path that exists
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      console.log(`[Pulumi] Found infrastructure at: ${p}`);
+      return p;
+    }
+  }
+
+  // Fallback to first path (will fail with meaningful error)
+  console.error(`[Pulumi] Could not find infrastructure directory. Tried: ${possiblePaths.join(', ')}`);
   return possiblePaths[0];
 }
 
@@ -130,6 +145,11 @@ async function configureStack(
     await stack.setConfig('tequity:enableBackups', { value: 'false' });
     await stack.setConfig('tequity:deletionProtection', { value: 'false' });
   }
+
+  // Skip service account key creation by default (org policies often block this)
+  // Use Workload Identity Federation instead in GKE
+  const skipSaKey = process.env.SKIP_SERVICE_ACCOUNT_KEY !== 'false';
+  await stack.setConfig('tequity:skipServiceAccountKey', { value: skipSaKey ? 'true' : 'false' });
 }
 
 /**

@@ -20,6 +20,7 @@ model Tenant {
   id        String   @id @default(uuid())
   slug      String   @unique // URL slug e.g., "acme-corp"
   name      String
+  email     String?  // Optional: owner's email for reference
   isActive  Boolean  @default(true)
   settings  Json     @default("{}")
   createdAt DateTime @default(now())

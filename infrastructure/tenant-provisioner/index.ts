@@ -10,6 +10,7 @@ const environment = config.require("environment");
 const databaseTier = config.get("databaseTier") || "db-f1-micro";
 const enableBackups = config.getBoolean("enableBackups") ?? false;
 const deletionProtection = config.getBoolean("deletionProtection") ?? false;
+const skipServiceAccountKey = config.getBoolean("skipServiceAccountKey") ?? true; // Default true due to org policies
 
 const project = gcpConfig.require("project");
 const region = gcpConfig.get("region") || "us-central1";
@@ -173,10 +174,18 @@ const sqlClientIamMember = new gcp.projects.IAMMember(`${resourcePrefix}-sql-cli
 });
 
 // Create service account key (for application use)
-const serviceAccountKey = new gcp.serviceaccount.Key(`${resourcePrefix}-sa-key`, {
-  serviceAccountId: serviceAccount.name,
-  publicKeyType: "TYPE_X509_PEM_FILE",
-});
+// Note: Some organizations have constraints/iam.disableServiceAccountKeyCreation policy
+// In that case, use Workload Identity Federation instead
+// Set tequity:skipServiceAccountKey to false if your org allows key creation
+let serviceAccountKey: gcp.serviceaccount.Key | undefined;
+if (!skipServiceAccountKey) {
+  serviceAccountKey = new gcp.serviceaccount.Key(`${resourcePrefix}-sa-key`, {
+    serviceAccountId: serviceAccount.name,
+    publicKeyType: "TYPE_X509_PEM_FILE",
+  });
+} else {
+  console.log("Service account key creation skipped (set tequity:skipServiceAccountKey=false to enable)");
+}
 
 // Build the database URL
 const databaseUrl = pulumi.all([
@@ -184,7 +193,7 @@ const databaseUrl = pulumi.all([
   dbUser.name,
   dbPassword.result,
   database.name,
-]).apply(([connectionName, user, password, dbName]) => {
+]).apply(([connectionName, user, password, dbName]: [string, string, string, string]) => {
   // Format: postgresql://user:password@localhost/db?host=/cloudsql/connection-name
   const encodedPassword = encodeURIComponent(password);
   return `postgresql://${user}:${encodedPassword}@localhost/${dbName}?host=/cloudsql/${connectionName}`;
@@ -196,7 +205,7 @@ const directDatabaseUrl = pulumi.all([
   dbUser.name,
   dbPassword.result,
   database.name,
-]).apply(([ipAddress, user, password, dbName]) => {
+]).apply(([ipAddress, user, password, dbName]: [string, string, string, string]) => {
   const encodedPassword = encodeURIComponent(password);
   return `postgresql://${user}:${encodedPassword}@${ipAddress}:5432/${dbName}?sslmode=require`;
 });
@@ -214,7 +223,7 @@ export const directDatabaseUrlOutput = directDatabaseUrl;
 export const storageBucketName = storageBucket.name;
 export const storageBucketUrl = pulumi.interpolate`gs://${storageBucket.name}`;
 export const serviceAccountEmail = serviceAccount.email;
-export const serviceAccountKeyJson = serviceAccountKey.privateKey;
+export const serviceAccountKeyJson = serviceAccountKey?.privateKey;
 
 // Export a summary object for easy consumption
 export const tenantResources = {
@@ -236,6 +245,6 @@ export const tenantResources = {
   },
   serviceAccount: {
     email: serviceAccountEmail,
-    keyJson: serviceAccountKeyJson,
+    keyJson: serviceAccountKeyJson, // undefined if skipServiceAccountKey=true
   },
 };

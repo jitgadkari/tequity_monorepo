@@ -251,6 +251,7 @@ async function initializeTenantData(
       create: {
         slug: tenantSlug,
         name: tenant.workspaceName || 'Workspace',
+        email: tenant.email,
         isActive: true,
       },
       update: {},
@@ -427,7 +428,12 @@ export async function POST(request: Request) {
       }
 
       // After successful provisioning, initialize tenant data in tenant DB
-      await initializeTenantData(db, tenant, tenant.slug || tenantId);
+      // Skip for mock mode since there's no separate tenant database
+      if (provider !== 'mock') {
+        await initializeTenantData(db, tenant, tenant.slug || tenantId);
+      } else {
+        console.log(`[Mock] Skipping tenant data initialization - mock mode uses master DB`);
+      }
 
       // Then migrate pending invites
       await migratePendingInvites(db, tenantId, tenant.slug || tenantId);
@@ -452,8 +458,9 @@ export async function POST(request: Request) {
       console.log('Falling back to mock provisioning...');
       const mockResult = await provisionMock(db, tenantId, tenant.slug || tenantId);
 
-      // Initialize tenant data even in fallback mode
-      await initializeTenantData(db, tenant, tenant.slug || tenantId);
+      // Skip tenant data initialization in mock fallback mode
+      // Mock mode uses master DB which has different schema
+      console.log(`[Mock Fallback] Skipping tenant data initialization - mock mode uses master DB`);
 
       // Still migrate invites and update stage even with mock
       await migratePendingInvites(db, tenantId, tenant.slug || tenantId);
