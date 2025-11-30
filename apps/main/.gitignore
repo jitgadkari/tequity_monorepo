@@ -10,8 +10,9 @@
 !.yarn/releases
 !.yarn/versions
 
-# Uploads directory
-/uploads
+# Uploads directory (local dev only, production uses tenant buckets)
+/uploads/*
+!/uploads/.gitkeep
 
 # testing
 /coverage

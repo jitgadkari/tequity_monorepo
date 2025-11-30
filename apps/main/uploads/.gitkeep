@@ -1,0 +1,2 @@
+# This directory is used for local development file uploads.
+# In production, files are stored in tenant-specific cloud storage buckets.
