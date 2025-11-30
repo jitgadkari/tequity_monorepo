@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { getSession, updateSession } from '@/lib/session';
-import { getMasterDb, schema } from '@/lib/master-db';
-import { generateSlug } from '@tequity/utils';
+import { getMasterDb } from '@/lib/master-db';
 
 export async function POST(request: Request) {
   try {
@@ -12,94 +10,101 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { planId } = await request.json();
+    const { planId, billing = 'monthly' } = await request.json();
 
     if (!planId) {
       return NextResponse.json({ error: 'Plan ID is required' }, { status: 400 });
     }
 
-    // In production, this would verify the payment with Polar.sh/Stripe
-    // For demo, we mock successful payment
-
     const db = getMasterDb();
 
-    // Get onboarding data
-    const onboarding = await db.query.tenantOnboarding.findFirst({
-      where: eq(schema.tenantOnboarding.userId, session.userId),
+    // Get tenant to ensure they exist and have a slug
+    const tenant = await db.tenant.findUnique({
+      where: { id: session.tenantId },
+      include: { onboardingSession: true },
     });
 
-    if (!onboarding) {
+    if (!tenant) {
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    }
+
+    if (!tenant.slug) {
       return NextResponse.json(
-        { error: 'Please complete onboarding first' },
+        { error: 'Please complete dataroom setup first' },
         { status: 400 }
       );
     }
 
-    // Get company name from companyData JSON
-    const companyData = onboarding.companyData as Record<string, unknown> | null;
-    const companyName = (companyData?.companyName as string) || 'My Workspace';
-    const slug = generateSlug(companyName);
+    // In production, this would redirect to Stripe/Polar for payment
+    // For now, we create the subscription with PAYMENT_PENDING status
+    // and then simulate successful payment
 
-    // Check if slug already exists
-    const existingTenant = await db.query.tenants.findFirst({
-      where: eq(schema.tenants.slug, slug),
+    // Update onboarding session with plan selection
+    await db.onboardingSession.update({
+      where: { tenantId: tenant.id },
+      data: {
+        selectedPlan: planId,
+        selectedBilling: billing,
+        currentStage: 'PLAN_SELECTED',
+        planSelectedAt: new Date(),
+      },
     });
 
-    const finalSlug = existingTenant ? `${slug}-${Date.now().toString(36)}` : slug;
+    // In production: redirect to Stripe checkout
+    // For demo: create subscription and mark as paid
 
-    // Create tenant
-    const [tenant] = await db
-      .insert(schema.tenants)
-      .values({
-        name: companyName,
-        slug: finalSlug,
-        status: 'provisioning',
-      })
-      .returning();
-
-    // Create subscription
+    // Calculate period end based on billing cycle
     const periodEnd = new Date();
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    if (billing === 'yearly') {
+      periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+    } else {
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+    }
 
-    await db.insert(schema.subscriptions).values({
-      tenantId: tenant.id,
-      plan: planId,
-      billing: 'monthly', // Default to monthly, can be passed from request
-      status: 'active',
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: periodEnd,
-      // In production: stripeSubscriptionId, stripeCustomerId, etc.
+    // Create or update subscription (paid plan)
+    await db.subscription.upsert({
+      where: { tenantId: tenant.id },
+      create: {
+        tenantId: tenant.id,
+        plan: planId,
+        billing: billing,
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: periodEnd,
+        // In production: stripeSubscriptionId, stripeCustomerId, etc.
+      },
+      update: {
+        plan: planId,
+        billing: billing,
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: periodEnd,
+      },
     });
 
-    // Create tenant membership
-    await db.insert(schema.tenantMemberships).values({
-      tenantId: tenant.id,
-      userId: session.userId,
-      role: 'owner',
+    // Update onboarding session with payment completed
+    await db.onboardingSession.update({
+      where: { tenantId: tenant.id },
+      data: {
+        currentStage: 'PAYMENT_COMPLETED',
+        paymentCompletedAt: new Date(),
+      },
     });
 
-    // Mark onboarding as complete
-    await db
-      .update(schema.tenantOnboarding)
-      .set({
-        paymentCompleted: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.tenantOnboarding.userId, session.userId));
+    // Update tenant status
+    await db.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        status: 'PROVISIONING',
+      },
+    });
 
-    // Update user
-    await db
-      .update(schema.users)
-      .set({
-        onboardingCompleted: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.users.id, session.userId));
+    // Update session with tenant slug
+    await updateSession({
+      tenantSlug: tenant.slug,
+    });
 
-    // Update session
-    await updateSession({ onboardingCompleted: true });
-
-    // Trigger provisioning
+    // Queue tenant provisioning (async)
     const provisionRes = await fetch(
       `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/platform/provision`,
       {
@@ -110,13 +115,14 @@ export async function POST(request: Request) {
     );
 
     if (!provisionRes.ok) {
-      console.error('Provisioning queued but may have failed');
+      console.error('Provisioning failed but continuing');
     }
 
     return NextResponse.json({
       success: true,
-      redirectUrl: `/${finalSlug}/Dashboard/Library`,
-      tenantSlug: finalSlug,
+      redirectUrl: `/${tenant.slug}/Dashboard/Library`,
+      tenantSlug: tenant.slug,
+      tenantName: tenant.workspaceName,
     });
   } catch (error) {
     console.error('Paid checkout error:', error);

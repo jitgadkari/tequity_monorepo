@@ -1,15 +1,25 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from '@tequity/database';
+import { prisma } from '@tequity/database';
 
-// Shared database connection with main app
-const connectionString = process.env.DATABASE_URL!;
+// Shared database connection with main app (master database)
+// Uses Prisma client from @tequity/database package
 
-// Create postgres client
-const client = postgres(connectionString, { prepare: false });
+export const db = prisma;
 
-// Create drizzle instance with shared schema
-export const db = drizzle(client, { schema });
-
-// Re-export schema for use in queries
-export { schema };
+// Re-export types for use in queries
+export type {
+  Tenant,
+  OnboardingSession,
+  PendingInvite,
+  Subscription,
+  VerificationToken,
+  PlatformAdmin,
+  OnboardingStage,
+  TenantStatus,
+  MembershipRole,
+  InviteStatus,
+  ProvisioningProvider,
+  TokenPurpose,
+  SubscriptionStatus,
+  AdminRole,
+  AdminStatus,
+} from '@tequity/database';

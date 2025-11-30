@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   let overallStatus: HealthStatus['status'] = 'healthy';
 
   // Check 1: Environment variables
-  const requiredEnvVars = ['TENANT_DATABASE_URL'];
+  const requiredEnvVars = ['MASTER_DATABASE_URL'];
   const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
 
   if (missingEnvVars.length > 0) {
@@ -60,20 +60,19 @@ export async function GET(request: Request) {
     });
   }
 
-  // Check 2: Database connectivity (tenant database)
+  // Check 2: Database connectivity (master database via Prisma)
   const dbCheckStart = Date.now();
   try {
     // Dynamic import to avoid issues if database is not configured
     const { db } = await import('@/lib/db');
-    const { sql } = await import('drizzle-orm');
 
-    // Execute a simple query to verify connectivity
-    await db.execute(sql`SELECT 1`);
+    // Execute a simple query to verify connectivity using Prisma's $queryRaw
+    await db.$queryRaw`SELECT 1`;
 
     checks.push({
       name: 'database',
       status: 'pass',
-      message: 'Tenant database connection successful',
+      message: 'Master database connection successful',
       duration_ms: Date.now() - dbCheckStart,
     });
   } catch (error) {

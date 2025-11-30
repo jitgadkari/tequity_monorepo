@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
 
 export async function POST(request: Request) {
   try {
     const session = await getSession();
+    console.log('[ONBOARDING/USE-CASE] Session:', session ? { tenantId: session.tenantId } : null);
 
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -15,6 +15,7 @@ export async function POST(request: Request) {
     // Support both single useCase string or useCases array
     const useCase = body.useCase;
     const useCases = body.useCases || (useCase ? [useCase] : []);
+    console.log('[ONBOARDING/USE-CASE] Request body:', { useCase, useCases });
 
     if (!useCases || useCases.length === 0) {
       return NextResponse.json(
@@ -25,32 +26,40 @@ export async function POST(request: Request) {
 
     const db = getMasterDb();
 
-    // Get existing onboarding to merge with companyData
-    const existingOnboarding = await db.query.tenantOnboarding.findFirst({
-      where: eq(schema.tenantOnboarding.userId, session.userId),
+    // Update tenant with use case
+    // Store primary use case in tenant, full list can be in settings if needed
+    const updatedTenant = await db.tenant.update({
+      where: { id: session.tenantId },
+      data: {
+        useCase: useCases[0], // Primary use case
+      },
     });
 
-    const existingCompanyData = (existingOnboarding?.companyData as Record<string, unknown>) || {};
+    console.log('[ONBOARDING/USE-CASE] Updated tenant:', {
+      id: updatedTenant.id,
+      useCase: updatedTenant.useCase,
+    });
 
-    // Update onboarding record - store useCases in companyData
-    await db
-      .update(schema.tenantOnboarding)
-      .set({
-        companyData: {
-          ...existingCompanyData,
-          useCases,
-        },
-        useCaseCompleted: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.tenantOnboarding.userId, session.userId));
+    // Update onboarding session stage
+    const updatedSession = await db.onboardingSession.update({
+      where: { tenantId: session.tenantId },
+      data: {
+        currentStage: 'USE_CASE_SELECTED',
+        useCaseSelectedAt: new Date(),
+      },
+    });
+
+    console.log('[ONBOARDING/USE-CASE] Updated onboarding session:', {
+      id: updatedSession.id,
+      currentStage: updatedSession.currentStage,
+    });
 
     return NextResponse.json({
       success: true,
       message: 'Use case saved',
     });
   } catch (error) {
-    console.error('Use case onboarding error:', error);
+    console.error('[ONBOARDING/USE-CASE] Error:', error);
     return NextResponse.json(
       { error: 'Failed to save use case' },
       { status: 500 }

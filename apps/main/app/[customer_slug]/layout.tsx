@@ -1,7 +1,6 @@
 import { redirect, notFound } from 'next/navigation';
-import { eq, and } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
 import { ProvisioningPage } from './ProvisioningPage';
 
 interface TenantLayoutProps {
@@ -19,9 +18,9 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
 
   const db = getMasterDb();
 
-  // Verify tenant exists
-  const tenant = await db.query.tenants.findFirst({
-    where: eq(schema.tenants.slug, customer_slug),
+  // Verify tenant exists by slug
+  const tenant = await db.tenant.findUnique({
+    where: { slug: customer_slug },
   });
 
   if (!tenant) {
@@ -30,9 +29,9 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
   }
 
   // Check tenant status
-  if (tenant.status !== 'active') {
+  if (tenant.status !== 'ACTIVE') {
     // Tenant is not active (provisioning, suspended, etc.)
-    if (tenant.status === 'provisioning') {
+    if (tenant.status === 'PROVISIONING') {
       // Show provisioning page with auto-refresh
       return <ProvisioningPage tenantId={tenant.id} />;
     }
@@ -48,18 +47,17 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
     );
   }
 
-  // If user is logged in, verify membership for protected routes
+  // If user is logged in, verify they own this tenant
   if (session) {
-    const membership = await db.query.tenantMemberships.findFirst({
-      where: and(
-        eq(schema.tenantMemberships.tenantId, tenant.id),
-        eq(schema.tenantMemberships.userId, session.userId)
-      ),
-    });
-
-    if (!membership) {
-      // User is logged in but not a member of this tenant
-      redirect('/workspaces');
+    // In the new model, tenantId in session should match this tenant
+    if (session.tenantId !== tenant.id) {
+      // User is logged in but trying to access a different tenant
+      // This shouldn't normally happen - redirect to their own workspace
+      if (session.tenantSlug) {
+        redirect(`/${session.tenantSlug}/Dashboard/Library`);
+      } else {
+        redirect('/workspaces');
+      }
     }
   }
 

@@ -4,7 +4,7 @@
  * Uses raw SQL for vector operations since Prisma doesn't natively support pgvector
  */
 
-import { PrismaClient, Prisma } from '@prisma/client'
+import { PrismaClient, Prisma } from '@prisma/tenant-client'
 
 const VECTOR_SIZE = 1536 // OpenAI ada-002 embedding dimension
 const DEFAULT_TABLE = 'DocumentEmbedding'

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, schema } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
-
-const { tenants } = schema;
 
 // Helper to generate consistent color from string
 function getColorFromString(str: string): string {
@@ -24,11 +21,22 @@ export async function GET(
     await requireAdmin();
     const { id } = await params;
 
-    const [tenant] = await db
-      .select()
-      .from(tenants)
-      .where(eq(tenants.id, id))
-      .limit(1);
+    const tenant = await db.tenant.findUnique({
+      where: { id },
+      include: {
+        onboardingSession: {
+          select: {
+            currentStage: true,
+          },
+        },
+        subscription: {
+          select: {
+            plan: true,
+            status: true,
+          },
+        },
+      },
+    });
 
     if (!tenant) {
       return NextResponse.json(
@@ -37,23 +45,24 @@ export async function GET(
       );
     }
 
+    const displayName = tenant.workspaceName || tenant.email;
+
     // Transform to match frontend expectations
     const customer = {
       id: tenant.id,
-      name: tenant.name,
-      email: tenant.slug,
+      name: displayName,
+      email: tenant.email,
       slug: tenant.slug,
-      plan: 'starter', // Will come from subscriptions
-      status: tenant.status === 'active' ? 'active' :
-              tenant.status === 'suspended' ? 'inactive' : 'pending',
+      plan: tenant.subscription?.plan || 'starter',
+      status: tenant.status === 'ACTIVE' ? 'active' :
+              tenant.status === 'SUSPENDED' ? 'inactive' : 'pending',
+      stage: tenant.onboardingSession?.currentStage || 'SIGNUP_STARTED',
       lastActive: tenant.updatedAt,
-      logo: tenant.name.charAt(0).toUpperCase(),
-      logoColor: getColorFromString(tenant.name),
+      logo: displayName.charAt(0).toUpperCase(),
+      logoColor: getColorFromString(displayName),
       createdAt: tenant.createdAt,
       updatedAt: tenant.updatedAt,
       useCase: tenant.useCase,
-      companySize: tenant.companySize,
-      industry: tenant.industry,
       // Raw tenant data
       rawStatus: tenant.status,
       provisioningProvider: tenant.provisioningProvider,
@@ -62,9 +71,9 @@ export async function GET(
     };
 
     return NextResponse.json(customer);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching tenant:', error);
-    if (error.message === 'Unauthorized') {
+    if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -88,30 +97,31 @@ export async function PATCH(
     const body = await request.json();
 
     // Map frontend fields to tenant schema
-    const updateData: any = {};
+    // TenantStatus enum: PENDING_ONBOARDING | PENDING_PAYMENT | PROVISIONING | ACTIVE | SUSPENDED | CANCELLED
+    const updateData: {
+      workspaceName?: string;
+      useCase?: string;
+      status?: 'PENDING_ONBOARDING' | 'PENDING_PAYMENT' | 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
+    } = {};
 
-    if (body.name !== undefined) updateData.name = body.name;
+    if (body.name !== undefined) updateData.workspaceName = body.name;
     if (body.useCase !== undefined) updateData.useCase = body.useCase;
-    if (body.companySize !== undefined) updateData.companySize = body.companySize;
-    if (body.industry !== undefined) updateData.industry = body.industry;
 
     // Map status
     if (body.status !== undefined) {
-      const statusMap: Record<string, string> = {
-        'active': 'active',
-        'inactive': 'suspended',
-        'pending': 'pending_onboarding',
+      const statusMap: Record<string, 'PENDING_ONBOARDING' | 'PENDING_PAYMENT' | 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'> = {
+        'active': 'ACTIVE',
+        'inactive': 'SUSPENDED',
+        'pending': 'PENDING_ONBOARDING',
+        'cancelled': 'CANCELLED',
       };
       updateData.status = statusMap[body.status] || body.status;
     }
 
-    updateData.updatedAt = new Date();
-
-    const [updatedTenant] = await db
-      .update(tenants)
-      .set(updateData)
-      .where(eq(tenants.id, id))
-      .returning();
+    const updatedTenant = await db.tenant.update({
+      where: { id },
+      data: updateData,
+    });
 
     if (!updatedTenant) {
       return NextResponse.json(
@@ -121,9 +131,9 @@ export async function PATCH(
     }
 
     return NextResponse.json(updatedTenant);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating tenant:', error);
-    if (error.message === 'Unauthorized') {
+    if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -145,10 +155,27 @@ export async function DELETE(
     await requireAdmin();
     const { id } = await params;
 
-    const [deletedTenant] = await db
-      .delete(tenants)
-      .where(eq(tenants.id, id))
-      .returning();
+    // Delete related records first (onboarding session, subscription, pending invites)
+    await db.onboardingSession.deleteMany({
+      where: { tenantId: id },
+    });
+
+    await db.subscription.deleteMany({
+      where: { tenantId: id },
+    });
+
+    await db.pendingInvite.deleteMany({
+      where: { tenantId: id },
+    });
+
+    await db.verificationToken.deleteMany({
+      where: { tenantId: id },
+    });
+
+    // Delete the tenant
+    const deletedTenant = await db.tenant.delete({
+      where: { id },
+    });
 
     if (!deletedTenant) {
       return NextResponse.json(
@@ -158,9 +185,9 @@ export async function DELETE(
     }
 
     return NextResponse.json({ message: 'Tenant deleted successfully' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting tenant:', error);
-    if (error.message === 'Unauthorized') {
+    if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

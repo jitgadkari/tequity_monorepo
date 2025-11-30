@@ -39,6 +39,12 @@ coverage
 *.pem
 *.local
 
+# GCP service account keys
+*.json
+!package.json
+!tsconfig.json
+!turbo.json
+
 # Vercel
 .vercel
 

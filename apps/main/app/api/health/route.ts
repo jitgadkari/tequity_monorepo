@@ -72,8 +72,8 @@ export async function GET(request: Request) {
     const { getMasterDb } = await import('@/lib/master-db');
     const db = getMasterDb();
 
-    // Execute a simple query to verify connectivity
-    await db.execute(new (await import('drizzle-orm')).sql`SELECT 1`);
+    // Execute a simple query to verify connectivity (Prisma)
+    await db.$queryRaw`SELECT 1`;
 
     checks.push({
       name: 'database',

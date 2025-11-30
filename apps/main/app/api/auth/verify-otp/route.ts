@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
-import { eq, and, desc } from 'drizzle-orm';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
 import { setSession } from '@/lib/session';
+import { createToken } from '@/lib/auth';
 import { isOtpExpired, hasExceededAttempts } from '@tequity/utils';
+import { getRedirectForStage } from '@/lib/onboarding-router';
 
 export async function POST(request: Request) {
   try {
     const { email, otp, purpose } = await request.json();
+    console.log('[VERIFY-OTP] Request received:', { email, purpose });
 
     if (!email || !otp || !purpose) {
       return NextResponse.json(
@@ -19,13 +21,15 @@ export async function POST(request: Request) {
     const db = getMasterDb();
 
     // Find the most recent token for this email and purpose
-    const token = await db.query.verificationTokens.findFirst({
-      where: and(
-        eq(schema.verificationTokens.email, normalizedEmail),
-        eq(schema.verificationTokens.purpose, purpose)
-      ),
-      orderBy: [desc(schema.verificationTokens.createdAt)],
+    const token = await db.verificationToken.findFirst({
+      where: {
+        email: normalizedEmail,
+        purpose: purpose === 'email_verification' ? 'EMAIL_VERIFICATION' : 'LOGIN_OTP',
+      },
+      orderBy: { createdAt: 'desc' },
     });
+
+    console.log('[VERIFY-OTP] Found token:', token ? { id: token.id, purpose: token.purpose } : null);
 
     if (!token) {
       return NextResponse.json(
@@ -61,10 +65,10 @@ export async function POST(request: Request) {
     // Verify OTP
     if (token.token !== otp) {
       // Increment attempts
-      await db
-        .update(schema.verificationTokens)
-        .set({ attempts: token.attempts + 1 })
-        .where(eq(schema.verificationTokens.id, token.id));
+      await db.verificationToken.update({
+        where: { id: token.id },
+        data: { attempts: token.attempts + 1 },
+      });
 
       return NextResponse.json(
         { error: 'Invalid verification code. Please try again.' },
@@ -73,84 +77,123 @@ export async function POST(request: Request) {
     }
 
     // Mark token as verified
-    await db
-      .update(schema.verificationTokens)
-      .set({ verifiedAt: new Date() })
-      .where(eq(schema.verificationTokens.id, token.id));
-
-    // Get user
-    const user = await db.query.users.findFirst({
-      where: eq(schema.users.email, normalizedEmail),
+    await db.verificationToken.update({
+      where: { id: token.id },
+      data: { verifiedAt: new Date() },
     });
 
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
+    console.log('[VERIFY-OTP] Token verified successfully');
 
-    // For email verification, mark email as verified
-    if (purpose === 'email_verification' && !user.emailVerified) {
-      await db
-        .update(schema.users)
-        .set({ emailVerified: true, updatedAt: new Date() })
-        .where(eq(schema.users.id, user.id));
-    }
-
-    // Create session
-    await setSession({
-      userId: user.id,
-      email: user.email,
-      emailVerified: purpose === 'email_verification' ? true : user.emailVerified,
-      onboardingCompleted: user.onboardingCompleted,
+    // Get tenant with onboarding session
+    const tenant = await db.tenant.findUnique({
+      where: { email: normalizedEmail },
+      include: { onboardingSession: true },
     });
 
-    // Determine redirect URL based on user state
-    let redirectUrl = '/workspace-setup';
+    if (!tenant) {
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    }
 
-    if (!user.onboardingCompleted) {
-      // Check onboarding progress
-      const onboarding = await db.query.tenantOnboarding.findFirst({
-        where: eq(schema.tenantOnboarding.userId, user.id),
+    console.log('[VERIFY-OTP] Found tenant:', {
+      id: tenant.id,
+      email: tenant.email,
+      emailVerified: tenant.emailVerified,
+      status: tenant.status,
+      onboardingStage: tenant.onboardingSession?.currentStage,
+    });
+
+    // For email verification, mark email as verified and update stage
+    if (purpose === 'email_verification' && !tenant.emailVerified) {
+      const updatedTenant = await db.tenant.update({
+        where: { id: tenant.id },
+        data: { emailVerified: true },
       });
 
-      if (!onboarding?.companyInfoCompleted || !onboarding?.useCaseCompleted) {
-        redirectUrl = '/workspace-setup';
-      } else if (!onboarding?.paymentCompleted) {
-        redirectUrl = '/pricing';
+      console.log('[VERIFY-OTP] Updated tenant emailVerified:', updatedTenant.emailVerified);
+
+      // Update onboarding stage to EMAIL_VERIFIED
+      if (tenant.onboardingSession) {
+        const updatedSession = await db.onboardingSession.update({
+          where: { id: tenant.onboardingSession.id },
+          data: {
+            currentStage: 'EMAIL_VERIFIED',
+            emailVerifiedAt: new Date(),
+          },
+        });
+
+        console.log('[VERIFY-OTP] Updated onboarding stage:', updatedSession.currentStage);
       }
-    } else {
-      // Check if user has tenants
-      const memberships = await db.query.tenantMemberships.findMany({
-        where: eq(schema.tenantMemberships.userId, user.id),
-      });
+    }
 
-      if (memberships.length > 0) {
-        // Get the first tenant slug (prioritize active ones)
-        const tenants = await Promise.all(
-          memberships.map(async (m) => {
-            return db.query.tenants.findFirst({
-              where: eq(schema.tenants.id, m.tenantId),
-            });
-          })
-        );
+    // Create session with tenant info (for SSR pages)
+    await setSession({
+      tenantId: tenant.id,
+      email: tenant.email,
+      emailVerified: purpose === 'email_verification' ? true : tenant.emailVerified,
+      tenantSlug: tenant.slug,
+    });
 
-        const activeTenant = tenants.find((t) => t?.status === 'active');
-        const anyTenant = tenants.find((t) => t);
+    console.log('[VERIFY-OTP] Session created for tenant:', tenant.id);
 
-        if (activeTenant) {
-          redirectUrl = `/${activeTenant.slug}/Dashboard/Library`;
-        } else if (anyTenant) {
-          // Tenant is still provisioning, go to a waiting page or dashboard
-          redirectUrl = `/${anyTenant.slug}/Dashboard/Library`;
+    // Determine redirect URL based on onboarding stage
+    const currentStage = tenant.onboardingSession?.currentStage || 'EMAIL_VERIFIED';
+    // If email was just verified, move to next stage
+    const effectiveStage = purpose === 'email_verification' ? 'EMAIL_VERIFIED' : currentStage;
+    const redirectUrl = getRedirectForStage(effectiveStage, tenant.slug || undefined);
+
+    console.log('[VERIFY-OTP] Redirect URL:', redirectUrl, 'Stage:', effectiveStage);
+
+    // For active tenants, create JWT token for API authentication
+    let authToken: string | null = null;
+    let user: { id: string; email: string; fullName: string | null; role: string; tenantSlug: string } | null = null;
+
+    if (tenant.status === 'ACTIVE' && tenant.slug) {
+      try {
+        // Get user from tenant database
+        const { getTenantDb } = await import('@/lib/db');
+        const tenantDb = await getTenantDb(tenant.slug);
+
+        const tenantUser = await tenantDb.user.findFirst({
+          where: {
+            email: normalizedEmail,
+            tenantSlug: tenant.slug,
+          },
+        });
+
+        if (tenantUser) {
+          // Create JWT token for API calls
+          authToken = await createToken({
+            userId: tenantUser.id,
+            email: tenantUser.email,
+            tenantSlug: tenant.slug,
+            role: tenantUser.role,
+          });
+
+          user = {
+            id: tenantUser.id,
+            email: tenantUser.email,
+            fullName: tenantUser.fullName,
+            role: tenantUser.role,
+            tenantSlug: tenant.slug,
+          };
+
+          console.log('[VERIFY-OTP] Created JWT token for user:', tenantUser.id);
         }
+      } catch (err) {
+        console.error('[VERIFY-OTP] Error fetching tenant user:', err);
+        // Continue without token - user may not be provisioned yet
       }
     }
 
     return NextResponse.json({
       success: true,
       redirectUrl,
+      // Include token and user for frontend localStorage storage
+      ...(authToken && { token: authToken }),
+      ...(user && { user }),
     });
   } catch (error) {
-    console.error('Verify OTP error:', error);
+    console.error('[VERIFY-OTP] Error:', error);
     return NextResponse.json(
       { error: 'Failed to verify code. Please try again.' },
       { status: 500 }

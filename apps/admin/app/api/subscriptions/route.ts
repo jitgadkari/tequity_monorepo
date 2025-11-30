@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, schema } from '@/lib/db';
-import { like, or, and, asc, desc, sql, eq } from 'drizzle-orm';
+import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
-
-const { subscriptions, tenants } = schema;
+import { Prisma } from '@tequity/database';
 
 // GET /api/subscriptions - List all subscriptions with search and pagination
 export async function GET(request: NextRequest) {
@@ -18,70 +16,50 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'createdAt';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
 
-    const offset = (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
-    // Build conditions
-    const conditions = [];
+    // Build search conditions using Prisma's SubscriptionWhereInput type
+    const whereConditions: Prisma.SubscriptionWhereInput = {};
 
     if (tenantId) {
-      conditions.push(eq(subscriptions.tenantId, tenantId));
+      whereConditions.tenantId = tenantId;
     }
 
     if (search) {
-      conditions.push(
-        or(
-          like(subscriptions.plan, `%${search}%`),
-          like(subscriptions.status, `%${search}%`)
-        )
-      );
+      whereConditions.plan = { contains: search, mode: 'insensitive' };
     }
 
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
     // Get total count
-    const [countResult] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(subscriptions)
-      .where(whereClause);
+    const totalCount = await db.subscription.count({
+      where: whereConditions,
+    });
 
-    const totalCount = Number(countResult.count);
     const totalPages = Math.ceil(totalCount / limit);
 
     // Get subscriptions with tenant info
-    const orderDirection = sortOrder === 'asc' ? asc(subscriptions.createdAt) : desc(subscriptions.createdAt);
-
-    const result = await db
-      .select({
-        id: subscriptions.id,
-        tenantId: subscriptions.tenantId,
-        tenantName: tenants.name,
-        tenantSlug: tenants.slug,
-        stripeCustomerId: subscriptions.stripeCustomerId,
-        stripeSubscriptionId: subscriptions.stripeSubscriptionId,
-        stripePriceId: subscriptions.stripePriceId,
-        plan: subscriptions.plan,
-        billing: subscriptions.billing,
-        status: subscriptions.status,
-        trialEndsAt: subscriptions.trialEndsAt,
-        currentPeriodStart: subscriptions.currentPeriodStart,
-        currentPeriodEnd: subscriptions.currentPeriodEnd,
-        cancelAtPeriodEnd: subscriptions.cancelAtPeriodEnd,
-        createdAt: subscriptions.createdAt,
-        updatedAt: subscriptions.updatedAt,
-      })
-      .from(subscriptions)
-      .leftJoin(tenants, eq(subscriptions.tenantId, tenants.id))
-      .where(whereClause)
-      .orderBy(orderDirection)
-      .limit(limit)
-      .offset(offset);
+    const subscriptions = await db.subscription.findMany({
+      where: whereConditions,
+      orderBy: {
+        [sortBy]: sortOrder,
+      },
+      skip,
+      take: limit,
+      include: {
+        tenant: {
+          select: {
+            workspaceName: true,
+            slug: true,
+          },
+        },
+      },
+    });
 
     // Transform for frontend compatibility
-    const transformedSubscriptions = result.map((sub) => ({
+    const transformedSubscriptions = subscriptions.map((sub) => ({
       id: sub.id,
       customerId: sub.tenantId,
-      customerName: sub.tenantName,
-      customerSlug: sub.tenantSlug,
+      customerName: sub.tenant?.workspaceName,
+      customerSlug: sub.tenant?.slug,
       plan: sub.plan,
       billing: sub.billing,
       status: sub.status,
@@ -106,9 +84,9 @@ export async function GET(request: NextRequest) {
         totalPages,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching subscriptions:', error);
-    if (error.message === 'Unauthorized') {
+    if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -148,11 +126,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if tenant exists
-    const [tenant] = await db
-      .select()
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
+    const tenant = await db.tenant.findUnique({
+      where: { id: tenantId },
+    });
 
     if (!tenant) {
       return NextResponse.json(
@@ -162,11 +138,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if subscription already exists for this tenant
-    const [existingSubscription] = await db
-      .select()
-      .from(subscriptions)
-      .where(eq(subscriptions.tenantId, tenantId))
-      .limit(1);
+    const existingSubscription = await db.subscription.findUnique({
+      where: { tenantId },
+    });
 
     if (existingSubscription) {
       return NextResponse.json(
@@ -180,22 +154,21 @@ export async function POST(request: NextRequest) {
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + (billing === 'yearly' ? 12 : 1));
 
-    const [newSubscription] = await db
-      .insert(subscriptions)
-      .values({
+    const newSubscription = await db.subscription.create({
+      data: {
         tenantId,
         plan,
         billing,
-        status: status || 'active',
+        status: status || 'ACTIVE',
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
-      })
-      .returning();
+      },
+    });
 
     return NextResponse.json(newSubscription, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating subscription:', error);
-    if (error.message === 'Unauthorized') {
+    if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

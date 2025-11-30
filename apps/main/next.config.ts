@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Enable standalone output for Docker deployments
+  output: 'standalone',
+
   // Transpile workspace packages
   transpilePackages: ['@tequity/database', '@tequity/types', '@tequity/utils'],
 

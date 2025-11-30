@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
 import {
   createSupabaseProject,
   waitForProjectReady,
@@ -18,27 +17,37 @@ async function getProvisionWithPulumi() {
   return provisionWithPulumi;
 }
 
+type DbClient = ReturnType<typeof getMasterDb>;
+
+interface TenantData {
+  id: string;
+  slug: string | null;
+  workspaceName: string | null;
+  email: string;
+  fullName: string | null;
+  settings: unknown;
+}
+
 /**
  * Mock provisioning - for development/testing
  */
 async function provisionMock(
-  db: ReturnType<typeof getMasterDb>,
+  db: DbClient,
   tenantId: string,
   tenantSlug: string
 ) {
   console.log(`[Mock] Provisioning tenant: ${tenantSlug}`);
 
-  await db
-    .update(schema.tenants)
-    .set({
-      status: 'active',
-      provisioningProvider: 'mock',
+  await db.tenant.update({
+    where: { id: tenantId },
+    data: {
+      status: 'ACTIVE',
+      provisioningProvider: 'MOCK',
       supabaseProjectId: `mock_${tenantSlug}`,
       supabaseProjectRef: `mock_ref_${tenantSlug}`,
       databaseUrlEncrypted: 'mock_encrypted_url',
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.tenants.id, tenantId));
+    },
+  });
 
   return {
     success: true,
@@ -51,24 +60,26 @@ async function provisionMock(
  * Supabase provisioning - uses Supabase Management API
  */
 async function provisionSupabase(
-  db: ReturnType<typeof getMasterDb>,
+  db: DbClient,
   tenantId: string,
-  tenant: { slug: string; name: string; settings: unknown }
+  tenant: TenantData
 ) {
-  console.log(`[Supabase] Starting provisioning for tenant: ${tenant.name} (${tenant.slug})`);
+  const tenantSlug = tenant.slug || tenantId;
+  const tenantName = tenant.workspaceName || 'Workspace';
+
+  console.log(`[Supabase] Starting provisioning for tenant: ${tenantName} (${tenantSlug})`);
 
   // Update status to provisioning
-  await db
-    .update(schema.tenants)
-    .set({
-      status: 'provisioning',
-      provisioningProvider: 'supabase',
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.tenants.id, tenantId));
+  await db.tenant.update({
+    where: { id: tenantId },
+    data: {
+      status: 'PROVISIONING',
+      provisioningProvider: 'SUPABASE',
+    },
+  });
 
   // Create Supabase project
-  const projectName = `tequity-${tenant.slug}`.slice(0, 40);
+  const projectName = `tequity-${tenantSlug}`.slice(0, 40);
   const { project, dbPassword } = await createSupabaseProject(projectName);
 
   if (!project.ref) {
@@ -95,11 +106,11 @@ async function provisionSupabase(
   }));
 
   // Update tenant with Supabase project details
-  await db
-    .update(schema.tenants)
-    .set({
-      status: 'active',
-      provisioningProvider: 'supabase',
+  await db.tenant.update({
+    where: { id: tenantId },
+    data: {
+      status: 'ACTIVE',
+      provisioningProvider: 'SUPABASE',
       supabaseProjectId: credentials.projectId,
       supabaseProjectRef: project.ref,
       databaseUrlEncrypted: encryptedUrl,
@@ -107,16 +118,15 @@ async function provisionSupabase(
         ...(tenant.settings as object || {}),
         credentialsEncrypted: encryptedCredentials,
       },
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.tenants.id, tenantId));
+    },
+  });
 
-  console.log(`[Supabase] Provisioning complete for tenant: ${tenant.slug}`);
+  console.log(`[Supabase] Provisioning complete for tenant: ${tenantSlug}`);
 
   return {
     success: true,
     message: 'Tenant provisioned successfully (Supabase)',
-    tenantSlug: tenant.slug,
+    tenantSlug,
   };
 }
 
@@ -124,31 +134,35 @@ async function provisionSupabase(
  * Pulumi/GCP provisioning - uses Pulumi Automation API
  */
 async function provisionPulumi(
-  db: ReturnType<typeof getMasterDb>,
+  db: DbClient,
   tenantId: string,
-  tenant: { slug: string; name: string; settings: unknown }
+  tenant: TenantData
 ) {
-  console.log(`[Pulumi/GCP] Starting provisioning for tenant: ${tenant.name} (${tenant.slug})`);
+  const tenantSlug = tenant.slug || tenantId;
+  const tenantName = tenant.workspaceName || 'Workspace';
 
-  // Determine environment from NODE_ENV
-  const environment = process.env.NODE_ENV === 'production' ? 'production' :
-                     process.env.NODE_ENV === 'staging' ? 'staging' : 'development';
+  console.log(`[Pulumi/GCP] Starting provisioning for tenant: ${tenantName} (${tenantSlug})`);
+
+  // Determine environment from NODE_ENV or DEPLOY_ENV
+  const deployEnv = process.env.DEPLOY_ENV || process.env.NODE_ENV;
+  const environment: 'development' | 'staging' | 'production' =
+    deployEnv === 'production' ? 'production' :
+    deployEnv === 'staging' ? 'staging' : 'development';
 
   // Update status to provisioning
-  await db
-    .update(schema.tenants)
-    .set({
-      status: 'provisioning',
-      provisioningProvider: 'gcp',
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.tenants.id, tenantId));
+  await db.tenant.update({
+    where: { id: tenantId },
+    data: {
+      status: 'PROVISIONING',
+      provisioningProvider: 'GCP',
+    },
+  });
 
   const provisionWithPulumi = await getProvisionWithPulumi();
   const result = await provisionWithPulumi({
     tenantId,
-    tenantSlug: tenant.slug,
-    tenantName: tenant.name,
+    tenantSlug,
+    tenantName,
     environment: environment as 'development' | 'staging' | 'production',
     region: process.env.GCP_REGION || 'us-central1',
   });
@@ -164,11 +178,11 @@ async function provisionPulumi(
     : null;
 
   // Update tenant with GCP provisioning details
-  await db
-    .update(schema.tenants)
-    .set({
-      status: 'active',
-      provisioningProvider: 'gcp',
+  await db.tenant.update({
+    where: { id: tenantId },
+    data: {
+      status: 'ACTIVE',
+      provisioningProvider: 'GCP',
 
       // GCP Cloud SQL details
       gcpProjectId: process.env.GCP_PROJECT_ID,
@@ -195,11 +209,10 @@ async function provisionPulumi(
         gcpProvisioned: true,
         provisionedAt: new Date().toISOString(),
       },
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.tenants.id, tenantId));
+    },
+  });
 
-  console.log(`[Pulumi/GCP] Provisioning complete for tenant: ${tenant.slug}`);
+  console.log(`[Pulumi/GCP] Provisioning complete for tenant: ${tenantSlug}`);
   console.log(`[Pulumi/GCP] Cloud SQL: ${result.cloudSqlInstanceName}`);
   console.log(`[Pulumi/GCP] Storage: ${result.storageBucketName}`);
   console.log(`[Pulumi/GCP] Service Account: ${result.serviceAccountEmail}`);
@@ -207,13 +220,142 @@ async function provisionPulumi(
   return {
     success: true,
     message: 'Tenant provisioned successfully (GCP via Pulumi)',
-    tenantSlug: tenant.slug,
+    tenantSlug,
     resources: {
       cloudSqlInstance: result.cloudSqlInstanceName,
       storageBucket: result.storageBucketName,
       serviceAccount: result.serviceAccountEmail,
     },
   };
+}
+
+/**
+ * Initialize tenant data after database is provisioned
+ * Creates the owner User and their initial Dataroom in the tenant DB
+ */
+async function initializeTenantData(
+  masterDb: DbClient,
+  tenant: TenantData,
+  tenantSlug: string
+) {
+  console.log(`[Provision] Initializing tenant data for: ${tenantSlug}`);
+
+  try {
+    // Get tenant-specific database connection
+    const { getTenantDb } = await import('@/lib/db');
+    const tenantDb = await getTenantDb(tenantSlug);
+
+    // 1. Create or find Tenant record in tenant DB (for multi-tenancy tracking)
+    await tenantDb.tenant.upsert({
+      where: { slug: tenantSlug },
+      create: {
+        slug: tenantSlug,
+        name: tenant.workspaceName || 'Workspace',
+        isActive: true,
+      },
+      update: {},
+    });
+
+    console.log(`[Provision] Created/updated tenant record in tenant DB`);
+
+    // 2. Create owner User in tenant DB
+    const ownerUser = await tenantDb.user.create({
+      data: {
+        tenantSlug,
+        email: tenant.email,
+        fullName: tenant.fullName,
+        role: 'owner',
+        isActive: true,
+        emailVerified: true,
+      },
+    });
+
+    console.log(`[Provision] Created owner user: ${ownerUser.id}`);
+
+    // 3. Create initial Dataroom
+    // Get useCase from master DB tenant record (stored during onboarding)
+    const masterTenant = await masterDb.tenant.findUnique({
+      where: { id: tenant.id },
+      select: { useCase: true },
+    });
+
+    const dataroom = await tenantDb.dataroom.create({
+      data: {
+        tenantSlug,
+        name: tenant.workspaceName || 'My Dataroom',
+        description: `Dataroom for ${tenant.workspaceName || tenantSlug}`,
+        ownerId: ownerUser.id,
+        useCase: masterTenant?.useCase || 'single-firm',
+        isActive: true,
+      },
+    });
+
+    console.log(`[Provision] Created dataroom: ${dataroom.id}`);
+
+    // 4. Create DataroomMember for owner
+    await tenantDb.dataroomMember.create({
+      data: {
+        dataroomId: dataroom.id,
+        userId: ownerUser.id,
+        role: 'owner',
+        status: 'active',
+        joinedAt: new Date(),
+      },
+    });
+
+    console.log(`[Provision] Tenant data initialized successfully`);
+
+    return { userId: ownerUser.id, dataroomId: dataroom.id };
+  } catch (error) {
+    console.error(`[Provision] Error initializing tenant data:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Migrate pending invites to tenant database as users
+ * This is called after the tenant database is provisioned
+ */
+async function migratePendingInvites(
+  db: DbClient,
+  tenantId: string,
+  _tenantSlug: string
+) {
+  // Get all pending invites for this tenant
+  const pendingInvites = await db.pendingInvite.findMany({
+    where: {
+      tenantId,
+      status: 'PENDING',
+    },
+  });
+
+  if (pendingInvites.length === 0) {
+    console.log(`[Migration] No pending invites to migrate for tenant: ${tenantId}`);
+    return;
+  }
+
+  console.log(`[Migration] Migrating ${pendingInvites.length} pending invites for tenant: ${tenantId}`);
+
+  // TODO: In a real implementation, this would:
+  // 1. Connect to the tenant's provisioned database
+  // 2. Create User records for each pending invite with status 'INVITED'
+  // 3. Send invitation emails with sign-up links
+  //
+  // For now, we just mark the invites as migrated in master DB
+  // The actual user creation in tenant DB will happen when the invited user signs up
+
+  // Mark invites as migrated
+  await db.pendingInvite.updateMany({
+    where: {
+      tenantId,
+      status: 'PENDING',
+    },
+    data: {
+      migratedToTenantAt: new Date(),
+    },
+  });
+
+  console.log(`[Migration] Successfully marked ${pendingInvites.length} invites as migrated`);
 }
 
 export async function POST(request: Request) {
@@ -226,9 +368,10 @@ export async function POST(request: Request) {
 
     const db = getMasterDb();
 
-    // Get tenant
-    const tenant = await db.query.tenants.findFirst({
-      where: eq(schema.tenants.id, tenantId),
+    // Get tenant with onboarding session
+    const tenant = await db.tenant.findUnique({
+      where: { id: tenantId },
+      include: { onboardingSession: true },
     });
 
     if (!tenant) {
@@ -236,10 +379,10 @@ export async function POST(request: Request) {
     }
 
     // Check if already provisioned (check both Supabase and GCP fields)
-    const isProvisioned = tenant.status === 'active' && (
+    const isProvisioned = tenant.status === 'ACTIVE' && (
       tenant.supabaseProjectId ||
       tenant.cloudSqlInstanceName ||
-      tenant.provisioningProvider === 'mock'
+      tenant.provisioningProvider === 'MOCK'
     );
 
     if (isProvisioned) {
@@ -247,6 +390,17 @@ export async function POST(request: Request) {
         success: true,
         message: 'Tenant already provisioned',
         provider: tenant.provisioningProvider,
+      });
+    }
+
+    // Update onboarding session to PROVISIONING stage
+    if (tenant.onboardingSession) {
+      await db.onboardingSession.update({
+        where: { id: tenant.onboardingSession.id },
+        data: {
+          currentStage: 'PROVISIONING',
+          provisioningAt: new Date(),
+        },
       });
     }
 
@@ -268,8 +422,25 @@ export async function POST(request: Request) {
 
         case 'mock':
         default:
-          result = await provisionMock(db, tenantId, tenant.slug);
+          result = await provisionMock(db, tenantId, tenant.slug || tenantId);
           break;
+      }
+
+      // After successful provisioning, initialize tenant data in tenant DB
+      await initializeTenantData(db, tenant, tenant.slug || tenantId);
+
+      // Then migrate pending invites
+      await migratePendingInvites(db, tenantId, tenant.slug || tenantId);
+
+      // Update onboarding session to ACTIVE stage
+      if (tenant.onboardingSession) {
+        await db.onboardingSession.update({
+          where: { id: tenant.onboardingSession.id },
+          data: {
+            currentStage: 'ACTIVE',
+            activatedAt: new Date(),
+          },
+        });
       }
 
       return NextResponse.json(result);
@@ -279,7 +450,23 @@ export async function POST(request: Request) {
 
       // Fall back to mock provisioning
       console.log('Falling back to mock provisioning...');
-      const mockResult = await provisionMock(db, tenantId, tenant.slug);
+      const mockResult = await provisionMock(db, tenantId, tenant.slug || tenantId);
+
+      // Initialize tenant data even in fallback mode
+      await initializeTenantData(db, tenant, tenant.slug || tenantId);
+
+      // Still migrate invites and update stage even with mock
+      await migratePendingInvites(db, tenantId, tenant.slug || tenantId);
+
+      if (tenant.onboardingSession) {
+        await db.onboardingSession.update({
+          where: { id: tenant.onboardingSession.id },
+          data: {
+            currentStage: 'ACTIVE',
+            activatedAt: new Date(),
+          },
+        });
+      }
 
       return NextResponse.json({
         ...mockResult,

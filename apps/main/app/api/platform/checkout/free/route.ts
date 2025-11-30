@@ -1,18 +1,11 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { getSession, updateSession } from '@/lib/session';
-import { getMasterDb, schema } from '@/lib/master-db';
-import { nanoid } from 'nanoid';
-
-// Generate a unique tenant slug (not based on user input)
-function generateTenantSlug(): string {
-  // Generate a short, unique ID like "t-abc123xyz"
-  return `t-${nanoid(10).toLowerCase()}`;
-}
+import { getMasterDb } from '@/lib/master-db';
 
 export async function POST() {
   try {
     const session = await getSession();
+    console.log('[CHECKOUT/FREE] Session:', session ? { tenantId: session.tenantId } : null);
 
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,89 +13,93 @@ export async function POST() {
 
     const db = getMasterDb();
 
-    // Get onboarding data to create tenant
-    const onboarding = await db.query.tenantOnboarding.findFirst({
-      where: eq(schema.tenantOnboarding.userId, session.userId),
+    // Get tenant to ensure they exist and have a slug
+    const tenant = await db.tenant.findUnique({
+      where: { id: session.tenantId },
+      include: { onboardingSession: true },
     });
 
-    if (!onboarding) {
+    console.log('[CHECKOUT/FREE] Found tenant:', tenant ? {
+      id: tenant.id,
+      slug: tenant.slug,
+      status: tenant.status,
+      onboardingStage: tenant.onboardingSession?.currentStage,
+    } : null);
+
+    if (!tenant) {
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    }
+
+    if (!tenant.slug) {
       return NextResponse.json(
-        { error: 'Please complete onboarding first' },
+        { error: 'Please complete dataroom setup first' },
         { status: 400 }
       );
     }
 
-    // Get company/dataroom name from companyData JSON
-    const companyData = onboarding.companyData as Record<string, unknown> | null;
-    const dataroomName = (companyData?.companyName as string) || 'My Workspace';
-
-    // Generate a unique tenant slug (NOT based on dataroom name)
-    // This ensures unique URLs and avoids conflicts
-    const tenantSlug = generateTenantSlug();
-
-    // Create tenant with unique slug
-    const [tenant] = await db
-      .insert(schema.tenants)
-      .values({
-        name: dataroomName, // User-friendly name for display
-        slug: tenantSlug,   // Unique URL-safe identifier
-        status: 'provisioning',
-        useCase: onboarding.useCaseCompleted ? 'investor' : undefined, // From onboarding
-      })
-      .returning();
-
-    // Link onboarding to tenant
-    await db
-      .update(schema.tenantOnboarding)
-      .set({
-        tenantId: tenant.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.tenantOnboarding.userId, session.userId));
-
     // Create subscription (free plan)
-    await db.insert(schema.subscriptions).values({
-      tenantId: tenant.id,
-      plan: 'starter',
-      billing: 'monthly',
-      status: 'active',
-      currentPeriodStart: new Date(),
-      // Free plan doesn't expire
+    const subscription = await db.subscription.upsert({
+      where: { tenantId: tenant.id },
+      create: {
+        tenantId: tenant.id,
+        plan: 'starter',
+        billing: 'monthly',
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+        // Free plan doesn't expire
+      },
+      update: {
+        plan: 'starter',
+        billing: 'monthly',
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+      },
     });
 
-    // Create tenant membership
-    await db.insert(schema.tenantMemberships).values({
-      tenantId: tenant.id,
-      userId: session.userId,
-      role: 'owner',
+    console.log('[CHECKOUT/FREE] Created/Updated subscription:', {
+      id: subscription.id,
+      plan: subscription.plan,
+      status: subscription.status,
     });
 
-    // Mark onboarding as complete
-    await db
-      .update(schema.tenantOnboarding)
-      .set({
-        paymentCompleted: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.tenantOnboarding.userId, session.userId));
+    // Update onboarding session with plan selection and payment completed
+    const updatedSession = await db.onboardingSession.update({
+      where: { tenantId: tenant.id },
+      data: {
+        selectedPlan: 'starter',
+        selectedBilling: 'monthly',
+        currentStage: 'PAYMENT_COMPLETED',
+        planSelectedAt: new Date(),
+        paymentCompletedAt: new Date(),
+      },
+    });
 
-    // Update user onboarding status
-    await db
-      .update(schema.users)
-      .set({
-        onboardingCompleted: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.users.id, session.userId));
+    console.log('[CHECKOUT/FREE] Updated onboarding session:', {
+      id: updatedSession.id,
+      currentStage: updatedSession.currentStage,
+      selectedPlan: updatedSession.selectedPlan,
+    });
 
-    // Update session with tenant info
+    // Update tenant status
+    const updatedTenant = await db.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        status: 'PROVISIONING',
+      },
+    });
+
+    console.log('[CHECKOUT/FREE] Updated tenant status:', updatedTenant.status);
+
+    // Update session with tenant slug
     await updateSession({
-      onboardingCompleted: true,
-      tenantSlug: tenantSlug,
+      tenantSlug: tenant.slug,
     });
 
-    // Queue tenant provisioning (in production, this would trigger async provisioning)
-    // For now, we'll do it synchronously in the provision API
+    console.log('[CHECKOUT/FREE] Session updated with tenantSlug');
+
+    // Queue tenant provisioning (async)
+    // In production, this would trigger async provisioning via a job queue
+    console.log('[CHECKOUT/FREE] Triggering provisioning...');
     const provisionRes = await fetch(
       `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/platform/provision`,
       {
@@ -113,17 +110,20 @@ export async function POST() {
     );
 
     if (!provisionRes.ok) {
-      console.error('Provisioning failed but continuing');
+      console.error('[CHECKOUT/FREE] Provisioning failed but continuing');
+    } else {
+      const provisionData = await provisionRes.json();
+      console.log('[CHECKOUT/FREE] Provisioning result:', provisionData);
     }
 
     return NextResponse.json({
       success: true,
-      redirectUrl: `/${tenantSlug}/Dashboard/Library`,
-      tenantSlug: tenantSlug,
-      tenantName: dataroomName,
+      redirectUrl: `/${tenant.slug}/Dashboard/Library`,
+      tenantSlug: tenant.slug,
+      tenantName: tenant.workspaceName,
     });
   } catch (error) {
-    console.error('Free checkout error:', error);
+    console.error('[CHECKOUT/FREE] Error:', error);
     return NextResponse.json(
       { error: 'Failed to process checkout' },
       { status: 500 }

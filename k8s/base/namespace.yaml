@@ -4,4 +4,4 @@ metadata:
   name: tequity
   labels:
     app.kubernetes.io/name: tequity
-    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: tequity-platform

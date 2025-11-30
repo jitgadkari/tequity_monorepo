@@ -19,10 +19,9 @@ export default function AddCustomerModal({
   const isLight = theme === "light";
   const [formData, setFormData] = useState({
     name: "",
+    email: "",
     slug: "",
     useCase: "",
-    companySize: "",
-    industry: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -65,10 +64,9 @@ export default function AddCustomerModal({
         },
         body: JSON.stringify({
           name: formData.name,
+          email: formData.email,
           slug: formData.slug || undefined,
           useCase: formData.useCase || undefined,
-          companySize: formData.companySize || undefined,
-          industry: formData.industry || undefined,
         }),
       });
 
@@ -84,10 +82,9 @@ export default function AddCustomerModal({
       // Reset form
       setFormData({
         name: "",
+        email: "",
         slug: "",
         useCase: "",
-        companySize: "",
-        industry: "",
       });
     } catch (err: any) {
       setError(err.message || 'Failed to create tenant. Please try again.');
@@ -102,10 +99,9 @@ export default function AddCustomerModal({
     setError("");
     setFormData({
       name: "",
+      email: "",
       slug: "",
       useCase: "",
-      companySize: "",
-      industry: "",
     });
   };
 
@@ -134,7 +130,7 @@ export default function AddCustomerModal({
                 isLight ? "text-gray-900" : "text-white"
               }`}
             >
-              Add Dataroom
+              Add Tenant
             </h2>
             <button
               onClick={handleClose}
@@ -150,7 +146,34 @@ export default function AddCustomerModal({
 
           {/* Modal Body */}
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            {/* Company Name */}
+            {/* Email */}
+            <div>
+              <label
+                htmlFor="email"
+                className={`block text-sm font-medium mb-2 ${
+                  isLight ? "text-gray-900" : "text-white"
+                }`}
+              >
+                Email *
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+                placeholder="tenant@company.com"
+                className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isLight
+                    ? "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
+                    : "border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:border-blue-500 focus:ring-blue-500/20"
+                }`}
+                required
+              />
+            </div>
+
+            {/* Workspace Name */}
             <div>
               <label
                 htmlFor="name"
@@ -158,7 +181,7 @@ export default function AddCustomerModal({
                   isLight ? "text-gray-900" : "text-white"
                 }`}
               >
-                Company Name *
+                Workspace Name
               </label>
               <input
                 type="text"
@@ -167,13 +190,12 @@ export default function AddCustomerModal({
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
                 }
-                placeholder="Enter company name"
+                placeholder="Enter workspace name"
                 className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
                   isLight
                     ? "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
                     : "border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:border-blue-500 focus:ring-blue-500/20"
                 }`}
-                required
               />
             </div>
 
@@ -238,63 +260,6 @@ export default function AddCustomerModal({
               </select>
             </div>
 
-            {/* Company Size */}
-            <div>
-              <label
-                htmlFor="companySize"
-                className={`block text-sm font-medium mb-2 ${
-                  isLight ? "text-gray-900" : "text-white"
-                }`}
-              >
-                Company Size
-              </label>
-              <select
-                id="companySize"
-                value={formData.companySize}
-                onChange={(e) =>
-                  setFormData({ ...formData, companySize: e.target.value })
-                }
-                className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                  isLight
-                    ? "border-gray-300 bg-white text-gray-900 focus:border-blue-500 focus:ring-blue-500/20"
-                    : "border-zinc-700 bg-zinc-800 text-white focus:border-blue-500 focus:ring-blue-500/20"
-                }`}
-              >
-                <option value="">Select company size</option>
-                <option value="1-10">1-10 employees</option>
-                <option value="11-50">11-50 employees</option>
-                <option value="51-200">51-200 employees</option>
-                <option value="201-500">201-500 employees</option>
-                <option value="500+">500+ employees</option>
-              </select>
-            </div>
-
-            {/* Industry */}
-            <div>
-              <label
-                htmlFor="industry"
-                className={`block text-sm font-medium mb-2 ${
-                  isLight ? "text-gray-900" : "text-white"
-                }`}
-              >
-                Industry
-              </label>
-              <input
-                type="text"
-                id="industry"
-                value={formData.industry}
-                onChange={(e) =>
-                  setFormData({ ...formData, industry: e.target.value })
-                }
-                placeholder="e.g., Financial Services, Technology"
-                className={`w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                  isLight
-                    ? "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
-                    : "border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:border-blue-500 focus:ring-blue-500/20"
-                }`}
-              />
-            </div>
-
             {/* Error Message */}
             {error && (
               <div className={`rounded-md p-3 ${isLight ? "bg-red-50 border border-red-200" : "bg-red-950/50 border border-red-900"}`}>
@@ -313,7 +278,7 @@ export default function AddCustomerModal({
                     : "bg-blue-600 hover:bg-blue-700 text-white"
                 }`}
               >
-                {loading ? 'Creating...' : 'Create Dataroom'}
+                {loading ? 'Creating...' : 'Create Tenant'}
               </button>
               <button
                 type="button"

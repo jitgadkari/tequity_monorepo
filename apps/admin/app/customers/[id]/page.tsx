@@ -13,13 +13,14 @@ import SuspendCustomerModal from "@/components/SuspendCustomerModal";
 import DeleteCustomerModal from "@/components/DeleteCustomerModal";
 import { useTheme } from "@/context/ThemeContext";
 
-interface Dataroom {
+interface Tenant {
   id: string;
   name: string;
   email: string;
   slug: string;
   plan: string;
   status: "active" | "inactive" | "pending";
+  stage: string;
   rawStatus: string;
   lastActive: string;
   logo: string;
@@ -60,7 +61,7 @@ interface Subscription {
   updatedAt: string;
 }
 
-export default function DataroomProfilePage() {
+export default function TenantProfilePage() {
   const router = useRouter();
   const params = useParams();
   const { theme } = useTheme();
@@ -82,7 +83,7 @@ export default function DataroomProfilePage() {
   const [setupUrlCopied, setSetupUrlCopied] = useState(false);
 
   // API state
-  const [dataroom, setDataroom] = useState<Dataroom | null>(null);
+  const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,9 +109,9 @@ export default function DataroomProfilePage() {
   // Calculate total pages from API data
   const totalPages = usersTotalPages;
 
-  // Fetch dataroom data from API
+  // Fetch tenant data from API
   useEffect(() => {
-    const fetchDataroom = async () => {
+    const fetchTenant = async () => {
       if (!params.id) return;
 
       try {
@@ -119,29 +120,29 @@ export default function DataroomProfilePage() {
 
         if (!response.ok) {
           if (response.status === 404) {
-            setError('Dataroom not found');
+            setError('Tenant not found');
           } else {
-            setError('Failed to load dataroom');
+            setError('Failed to load tenant');
           }
           return;
         }
 
         const data = await response.json();
-        setDataroom(data);
+        setTenant(data);
         setSettingsData({
           companyName: data.name,
           companyEmail: data.slug,
           ownerEmail: '',
         });
       } catch (err) {
-        console.error('Error fetching dataroom:', err);
-        setError('Failed to load dataroom');
+        console.error('Error fetching tenant:', err);
+        setError('Failed to load tenant');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDataroom();
+    fetchTenant();
   }, [params.id]);
 
   // Fetch users from API
@@ -375,60 +376,60 @@ export default function DataroomProfilePage() {
     }
   };
 
-  const handleSuspendDataroom = async () => {
-    if (!dataroom) return;
+  const handleSuspendTenant = async () => {
+    if (!tenant) return;
 
     try {
       // Toggle between inactive and active
-      const newStatus = dataroom.status === 'inactive' ? 'active' : 'inactive';
+      const newStatus = tenant.status === 'inactive' ? 'active' : 'inactive';
 
-      const response = await fetch(`/api/customers/${dataroom.id}`, {
+      const response = await fetch(`/api/customers/${tenant.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update dataroom status');
+        throw new Error('Failed to update tenant status');
       }
 
-      // Refresh dataroom data
-      const refreshResponse = await fetch(`/api/customers/${dataroom.id}`);
-      const updatedDataroom = await refreshResponse.json();
-      setDataroom(updatedDataroom);
+      // Refresh tenant data
+      const refreshResponse = await fetch(`/api/customers/${tenant.id}`);
+      const updatedTenant = await refreshResponse.json();
+      setTenant(updatedTenant);
 
       setSuccessMessage(
         newStatus === 'active'
-          ? "Dataroom successfully activated"
-          : "Dataroom successfully suspended"
+          ? "Tenant successfully activated"
+          : "Tenant successfully suspended"
       );
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
       }, 3000);
     } catch (err) {
-      console.error('Error updating dataroom status:', err);
-      alert('Failed to update dataroom status. Please try again.');
+      console.error('Error updating tenant status:', err);
+      alert('Failed to update tenant status. Please try again.');
     }
   };
 
-  const handleDeleteDataroom = async () => {
-    if (!dataroom) return;
+  const handleDeleteTenant = async () => {
+    if (!tenant) return;
 
     try {
-      const response = await fetch(`/api/customers/${dataroom.id}`, {
+      const response = await fetch(`/api/customers/${tenant.id}`, {
         method: 'DELETE',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete dataroom');
+        throw new Error('Failed to delete tenant');
       }
 
-      // Redirect to datarooms list
+      // Redirect to tenants list
       router.push("/customers");
     } catch (err) {
-      console.error('Error deleting dataroom:', err);
-      alert('Failed to delete dataroom. Please try again.');
+      console.error('Error deleting tenant:', err);
+      alert('Failed to delete tenant. Please try again.');
     }
   };
 
@@ -441,7 +442,7 @@ export default function DataroomProfilePage() {
           <Header onMenuClick={() => setMobileMenuOpen(true)} />
           <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 flex items-center justify-center">
             <div className={`text-sm ${isLight ? "text-gray-600" : "text-zinc-400"}`}>
-              Loading dataroom...
+              Loading tenant...
             </div>
           </main>
         </div>
@@ -450,7 +451,7 @@ export default function DataroomProfilePage() {
   }
 
   // Show error state
-  if (error || !dataroom) {
+  if (error || !tenant) {
     return (
       <div className={`flex min-h-screen ${isLight ? "bg-gray-50" : "bg-zinc-950"}`}>
         <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
@@ -459,7 +460,7 @@ export default function DataroomProfilePage() {
           <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 flex items-center justify-center">
             <div className="text-center">
               <div className={`text-sm mb-4 ${isLight ? "text-gray-600" : "text-zinc-400"}`}>
-                {error || 'Dataroom not found'}
+                {error || 'Tenant not found'}
               </div>
               <button
                 onClick={() => router.push("/customers")}
@@ -469,7 +470,7 @@ export default function DataroomProfilePage() {
                     : "bg-blue-600 hover:bg-blue-700"
                 }`}
               >
-                Back to Datarooms
+                Back to Tenants
               </button>
             </div>
           </main>
@@ -502,11 +503,11 @@ export default function DataroomProfilePage() {
               isLight ? "text-gray-600" : "text-zinc-400"
             }`}>
               <Link href="/customers" className="hover:underline">
-                Datarooms
+                Tenants
               </Link>
               <span>›</span>
               <span className={isLight ? "text-gray-900" : "text-white"}>
-                {dataroom.name}
+                {tenant.name}
               </span>
             </div>
           </div>
@@ -519,38 +520,38 @@ export default function DataroomProfilePage() {
             }`}
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Datarooms
+            Back to Tenants
           </button>
 
-          {/* Dataroom Header */}
+          {/* Tenant Header */}
           <div className="mb-4 md:mb-6">
             <div className="flex items-center gap-3 md:gap-4">
               <div
                 className="flex h-12 w-12 md:h-16 md:w-16 items-center justify-center rounded-xl text-white font-bold text-lg md:text-2xl"
-                style={{ backgroundColor: dataroom.logoColor }}
+                style={{ backgroundColor: tenant.logoColor }}
               >
-                {dataroom.logo}
+                {tenant.logo}
               </div>
               <div>
                 <h1 className={`text-lg md:text-2xl font-bold ${
                   isLight ? "text-gray-900" : "text-white"
                 }`}>
-                  {dataroom.name}
+                  {tenant.name}
                 </h1>
                 <p className={`text-xs md:text-sm ${
                   isLight ? "text-gray-600" : "text-zinc-400"
                 }`}>
-                  /{dataroom.slug}
+                  /{tenant.slug}
                 </p>
               </div>
               {/* Status Badge */}
               <span
                 className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${
-                  dataroom.status === "active"
+                  tenant.status === "active"
                     ? isLight
                       ? "bg-green-100 text-green-700 border border-green-200"
                       : "bg-green-950/50 text-green-400 border border-green-900"
-                    : dataroom.status === "pending"
+                    : tenant.status === "pending"
                     ? isLight
                       ? "bg-orange-100 text-orange-700 border border-orange-200"
                       : "bg-orange-950/50 text-orange-400 border border-orange-900"
@@ -559,7 +560,7 @@ export default function DataroomProfilePage() {
                     : "bg-zinc-800 text-zinc-400 border border-zinc-700"
                 }`}
               >
-                {dataroom.rawStatus || dataroom.status}
+                {tenant.rawStatus || tenant.status}
               </span>
             </div>
           </div>
@@ -1163,7 +1164,7 @@ export default function DataroomProfilePage() {
                   <p className={`mt-1 text-sm ${
                     isLight ? "text-gray-600" : "text-zinc-400"
                   }`}>
-                    Infrastructure resources provisioned for this dataroom.
+                    Infrastructure resources provisioned for this tenant.
                   </p>
                 </div>
                 <div className="p-6">
@@ -1178,8 +1179,8 @@ export default function DataroomProfilePage() {
                       <p className={`text-sm font-medium ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        {dataroom.provisioningProvider ? (
-                          <span className="capitalize">{dataroom.provisioningProvider}</span>
+                        {tenant.provisioningProvider ? (
+                          <span className="capitalize">{tenant.provisioningProvider}</span>
                         ) : (
                           <span className={isLight ? "text-gray-400" : "text-zinc-500"}>Not provisioned</span>
                         )}
@@ -1195,11 +1196,11 @@ export default function DataroomProfilePage() {
                       </label>
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          dataroom.rawStatus === "active"
+                          tenant.rawStatus === "active"
                             ? isLight
                               ? "bg-green-100 text-green-700"
                               : "bg-green-950/50 text-green-400"
-                            : dataroom.rawStatus === "provisioning"
+                            : tenant.rawStatus === "provisioning"
                             ? isLight
                               ? "bg-blue-100 text-blue-700"
                               : "bg-blue-950/50 text-blue-400"
@@ -1208,7 +1209,7 @@ export default function DataroomProfilePage() {
                             : "bg-zinc-800 text-zinc-400"
                         }`}
                       >
-                        {dataroom.rawStatus || "pending"}
+                        {tenant.rawStatus || "pending"}
                       </span>
                     </div>
                   </div>
@@ -1230,12 +1231,12 @@ export default function DataroomProfilePage() {
                   <p className={`mt-1 text-sm ${
                     isLight ? "text-gray-600" : "text-zinc-400"
                   }`}>
-                    Dedicated database instance for this dataroom.
+                    Dedicated database instance for this tenant.
                   </p>
                 </div>
                 <div className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {dataroom.provisioningProvider === "supabase" && (
+                    {tenant.provisioningProvider === "supabase" && (
                       <>
                         <div>
                           <label className={`block text-sm font-medium mb-1 ${
@@ -1246,7 +1247,7 @@ export default function DataroomProfilePage() {
                           <p className={`text-sm font-mono ${
                             isLight ? "text-gray-900" : "text-white"
                           }`}>
-                            {dataroom.supabaseProjectRef || "—"}
+                            {tenant.supabaseProjectRef || "—"}
                           </p>
                         </div>
                         <div>
@@ -1255,9 +1256,9 @@ export default function DataroomProfilePage() {
                           }`}>
                             Supabase Dashboard
                           </label>
-                          {dataroom.supabaseProjectRef ? (
+                          {tenant.supabaseProjectRef ? (
                             <a
-                              href={`https://supabase.com/dashboard/project/${dataroom.supabaseProjectRef}`}
+                              href={`https://supabase.com/dashboard/project/${tenant.supabaseProjectRef}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className={`text-sm ${
@@ -1273,7 +1274,7 @@ export default function DataroomProfilePage() {
                       </>
                     )}
 
-                    {dataroom.provisioningProvider === "gcp" && (
+                    {tenant.provisioningProvider === "gcp" && (
                       <>
                         <div>
                           <label className={`block text-sm font-medium mb-1 ${
@@ -1284,13 +1285,13 @@ export default function DataroomProfilePage() {
                           <p className={`text-sm font-mono ${
                             isLight ? "text-gray-900" : "text-white"
                           }`}>
-                            {dataroom.cloudSqlInstanceName || "—"}
+                            {tenant.cloudSqlInstanceName || "—"}
                           </p>
                         </div>
                       </>
                     )}
 
-                    {dataroom.provisioningProvider === "mock" && (
+                    {tenant.provisioningProvider === "mock" && (
                       <div className="col-span-2">
                         <div className={`rounded-lg p-4 ${
                           isLight ? "bg-yellow-50 border border-yellow-200" : "bg-yellow-950/30 border border-yellow-900"
@@ -1298,13 +1299,13 @@ export default function DataroomProfilePage() {
                           <p className={`text-sm ${
                             isLight ? "text-yellow-700" : "text-yellow-400"
                           }`}>
-                            This dataroom is using mock provisioning (development mode). No actual database resources have been created.
+                            This tenant is using mock provisioning (development mode). No actual database resources have been created.
                           </p>
                         </div>
                       </div>
                     )}
 
-                    {!dataroom.provisioningProvider && (
+                    {!tenant.provisioningProvider && (
                       <div className="col-span-2">
                         <div className={`rounded-lg p-4 ${
                           isLight ? "bg-gray-50 border border-gray-200" : "bg-zinc-800 border border-zinc-700"
@@ -1312,7 +1313,7 @@ export default function DataroomProfilePage() {
                           <p className={`text-sm ${
                             isLight ? "text-gray-600" : "text-zinc-400"
                           }`}>
-                            No database has been provisioned for this dataroom yet.
+                            No database has been provisioned for this tenant yet.
                           </p>
                         </div>
                       </div>
@@ -1321,7 +1322,7 @@ export default function DataroomProfilePage() {
                 </div>
               </div>
 
-              {/* Dataroom Info */}
+              {/* Tenant Info */}
               <div className={`rounded-lg border ${
                 isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
               }`}>
@@ -1331,7 +1332,7 @@ export default function DataroomProfilePage() {
                   <h3 className={`text-lg font-semibold ${
                     isLight ? "text-gray-900" : "text-white"
                   }`}>
-                    Dataroom Info
+                    Tenant Info
                   </h3>
                 </div>
                 <div className="p-6">
@@ -1345,7 +1346,7 @@ export default function DataroomProfilePage() {
                       <p className={`text-sm capitalize ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        {dataroom.useCase?.replace(/_/g, ' ') || "—"}
+                        {tenant.useCase?.replace(/_/g, ' ') || "—"}
                       </p>
                     </div>
                     <div>
@@ -1357,7 +1358,7 @@ export default function DataroomProfilePage() {
                       <p className={`text-sm ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        {dataroom.companySize || "—"}
+                        {tenant.companySize || "—"}
                       </p>
                     </div>
                     <div>
@@ -1369,7 +1370,7 @@ export default function DataroomProfilePage() {
                       <p className={`text-sm ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        {dataroom.industry || "—"}
+                        {tenant.industry || "—"}
                       </p>
                     </div>
                     <div>
@@ -1381,7 +1382,7 @@ export default function DataroomProfilePage() {
                       <p className={`text-sm ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        {new Date(dataroom.createdAt).toLocaleDateString()}
+                        {new Date(tenant.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                     <div>
@@ -1393,7 +1394,7 @@ export default function DataroomProfilePage() {
                       <p className={`text-sm ${
                         isLight ? "text-gray-900" : "text-white"
                       }`}>
-                        {new Date(dataroom.updatedAt).toLocaleString()}
+                        {new Date(tenant.updatedAt).toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -1616,7 +1617,7 @@ export default function DataroomProfilePage() {
           {/* Settings Tab Content */}
           {activeTab === "settings" && (
             <div className="space-y-6">
-              {/* Dataroom Details Section */}
+              {/* Tenant Details Section */}
               <div className={`rounded-lg border ${
                 isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
               }`}>
@@ -1626,12 +1627,12 @@ export default function DataroomProfilePage() {
                   <h3 className={`text-lg font-semibold ${
                     isLight ? "text-gray-900" : "text-white"
                   }`}>
-                    Dataroom Details
+                    Tenant Details
                   </h3>
                   <p className={`mt-1 text-sm ${
                     isLight ? "text-gray-600" : "text-zinc-400"
                   }`}>
-                    Edit the core profile information for this dataroom.
+                    Edit the core profile information for this tenant.
                   </p>
                 </div>
                 <div className="p-6 space-y-4">
@@ -1664,14 +1665,14 @@ export default function DataroomProfilePage() {
                           ? "border-gray-300 bg-gray-50 text-gray-600"
                           : "border-zinc-700 bg-zinc-800 text-zinc-400"
                       }`}>
-                        /{dataroom.slug}
+                        /{tenant.slug}
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Dataroom Logo Section */}
+              {/* Tenant Logo Section */}
               <div className={`rounded-lg border ${
                 isLight ? "border-gray-200 bg-white" : "border-zinc-800 bg-zinc-900/50"
               }`}>
@@ -1681,7 +1682,7 @@ export default function DataroomProfilePage() {
                   <h3 className={`text-lg font-semibold ${
                     isLight ? "text-gray-900" : "text-white"
                   }`}>
-                    Dataroom Logo
+                    Tenant Logo
                   </h3>
                   <p className={`mt-1 text-sm ${
                     isLight ? "text-gray-600" : "text-zinc-400"
@@ -1693,9 +1694,9 @@ export default function DataroomProfilePage() {
                   <div className="flex items-center gap-4">
                     <div
                       className="flex h-16 w-16 items-center justify-center rounded-full text-white font-bold text-2xl"
-                      style={{ backgroundColor: dataroom.logoColor }}
+                      style={{ backgroundColor: tenant.logoColor }}
                     >
-                      {dataroom.logo}
+                      {tenant.logo}
                     </div>
                     <div className="flex items-center gap-3">
                       <button className={`flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
@@ -1737,49 +1738,49 @@ export default function DataroomProfilePage() {
                   </p>
                 </div>
                 <div className="p-6 space-y-6">
-                  {/* Suspend/Activate Dataroom */}
+                  {/* Suspend/Activate Tenant */}
                   <div>
                     <h4 className={`text-sm font-semibold mb-2 ${
                       isLight ? "text-gray-900" : "text-white"
                     }`}>
-                      {dataroom.status === 'inactive' ? 'Activate Dataroom' : 'Suspend Dataroom'}
+                      {tenant.status === 'inactive' ? 'Activate Tenant' : 'Suspend Tenant'}
                     </h4>
                     <button
                       onClick={() => setIsSuspendModalOpen(true)}
                       className={`rounded-md px-6 py-2 text-sm font-medium text-white transition-colors mb-2 ${
-                        dataroom.status === 'inactive'
+                        tenant.status === 'inactive'
                           ? 'bg-green-600 hover:bg-green-700'
                           : 'bg-red-600 hover:bg-red-700'
                       }`}
                     >
-                      {dataroom.status === 'inactive' ? 'Activate Dataroom' : 'Suspend Dataroom'}
+                      {tenant.status === 'inactive' ? 'Activate Tenant' : 'Suspend Tenant'}
                     </button>
                     <p className={`text-sm ${
                       isLight ? "text-gray-600" : "text-zinc-400"
                     }`}>
-                      {dataroom.status === 'inactive'
-                        ? 'Reactivate dataroom access and restore full service availability.'
+                      {tenant.status === 'inactive'
+                        ? 'Reactivate tenant access and restore full service availability.'
                         : 'Temporarily suspend all activity and block user access. This action can be reversed.'}
                     </p>
                   </div>
 
-                  {/* Delete Dataroom */}
+                  {/* Delete Tenant */}
                   <div>
                     <h4 className={`text-sm font-semibold mb-2 ${
                       isLight ? "text-gray-900" : "text-white"
                     }`}>
-                      Delete Dataroom
+                      Delete Tenant
                     </h4>
                     <button
                       onClick={() => setIsDeleteModalOpen(true)}
                       className="rounded-md bg-red-600 px-6 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors mb-2"
                     >
-                      Delete Dataroom
+                      Delete Tenant
                     </button>
                     <p className={`text-sm ${
                       isLight ? "text-gray-600" : "text-zinc-400"
                     }`}>
-                      Permanently delete the dataroom and all its data. This action is irreversible.
+                      Permanently delete the tenant and all its data. This action is irreversible.
                     </p>
                   </div>
                 </div>
@@ -1818,21 +1819,21 @@ export default function DataroomProfilePage() {
         userName={selectedUser?.name || ''}
       />
 
-      {/* Suspend/Activate Dataroom Modal */}
+      {/* Suspend/Activate Tenant Modal */}
       <SuspendCustomerModal
         isOpen={isSuspendModalOpen}
         onClose={() => setIsSuspendModalOpen(false)}
-        onConfirm={handleSuspendDataroom}
-        customerName={dataroom.name}
-        currentStatus={dataroom.status}
+        onConfirm={handleSuspendTenant}
+        customerName={tenant.name}
+        currentStatus={tenant.status}
       />
 
-      {/* Delete Dataroom Modal */}
+      {/* Delete Tenant Modal */}
       <DeleteCustomerModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleDeleteDataroom}
-        customerName={dataroom.name}
+        onConfirm={handleDeleteTenant}
+        customerName={tenant.name}
       />
 
       {/* Success Toast */}

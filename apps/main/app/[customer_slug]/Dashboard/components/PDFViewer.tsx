@@ -356,16 +356,19 @@ export function PDFViewer({
                     }
                     className="flex flex-col items-center"
                   >
-                    {Array.from(new Array(numPages), (el, index) => (
-                      <Page
-                        key={`page_${index + 1}`}
-                        pageNumber={index + 1}
-                        width={isMaximized ? 800 : 360}
-                        className="mb-4 shadow-lg"
-                        renderTextLayer={false}
-                        renderAnnotationLayer={false}
-                      />
-                    ))}
+                    {Array.from(new Array(numPages), (el, index) => {
+                      const PageComponent = Page!;
+                      return (
+                        <PageComponent
+                          key={`page_${index + 1}`}
+                          pageNumber={index + 1}
+                          width={isMaximized ? 800 : 360}
+                          className="mb-4 shadow-lg"
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                        />
+                      );
+                    })}
                   </Document>
                 )}
                 {isPdfReady && numPages > 0 && (

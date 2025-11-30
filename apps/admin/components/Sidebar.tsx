@@ -16,7 +16,7 @@ import { useSettings } from "@/context/SettingsContext";
 
 const navigation = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/" },
-  { name: "Datarooms", icon: Building2, href: "/customers" },
+  { name: "Tenants", icon: Building2, href: "/customers" },
   { name: "Subscriptions", icon: Receipt, href: "/subscriptions" },
 ];
 

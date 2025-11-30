@@ -1,0 +1,287 @@
+// Tequity Master Database Schema
+// This schema is for the platform-level database that stores:
+// - Tenants (people who sign up and pay)
+// - Onboarding progress
+// - Pending invites (before tenant DB is provisioned)
+// - Subscriptions and billing
+// - Platform admins
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/@prisma/master-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("MASTER_DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum OnboardingStage {
+  SIGNUP_STARTED
+  EMAIL_VERIFIED
+  DATAROOM_CREATED
+  USE_CASE_SELECTED
+  WORKFLOW_SETUP
+  USERS_INVITED
+  PLAN_SELECTED
+  PAYMENT_PENDING
+  PAYMENT_COMPLETED
+  PROVISIONING
+  ACTIVE
+}
+
+enum TenantStatus {
+  PENDING_ONBOARDING
+  PENDING_PAYMENT
+  PROVISIONING
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum ProvisioningProvider {
+  SUPABASE
+  GCP
+  MOCK
+}
+
+enum TokenPurpose {
+  EMAIL_VERIFICATION
+  LOGIN_OTP
+  PASSWORD_RESET
+  TEAM_INVITE
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum AdminStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ============================================
+// TENANT (The person/company who signs up)
+// After DB provisioning, they become a User with role 'owner' in tenant DB
+// ============================================
+
+model Tenant {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  fullName      String?
+  avatarUrl     String?
+  emailVerified Boolean  @default(false)
+
+  // Workspace info (set during onboarding)
+  slug          String?  @unique // URL-friendly identifier, set after dataroom created
+  workspaceName String?          // Display name for the workspace
+
+  // Tenant status
+  status TenantStatus @default(PENDING_ONBOARDING)
+
+  // Provisioning details
+  provisioningProvider ProvisioningProvider?
+
+  // Supabase provisioning
+  supabaseProjectId    String?
+  supabaseProjectRef   String?
+  databaseUrlEncrypted String?
+
+  // GCP provisioning
+  gcpProjectId               String?
+  gcpRegion                  String?
+  cloudSqlInstanceName       String?
+  cloudSqlConnectionName     String?
+  gcpDatabaseUrlEncrypted    String?
+  storageBucketName          String?
+  serviceAccountEmail        String?
+  serviceAccountKeyEncrypted String?
+  pulumiStackName            String?
+
+  // Metadata from onboarding
+  useCase     String?
+  companySize String?
+  industry    String?
+  settings    Json    @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  onboardingSession  OnboardingSession?
+  subscription       Subscription?
+  pendingInvites     PendingInvite[]
+  verificationTokens VerificationToken[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+// ============================================
+// ONBOARDING SESSION
+// Tracks the tenant's progress through signup stages
+// Enables resumable flow - tenant can close browser and continue later
+// ============================================
+
+model OnboardingSession {
+  id           String          @id @default(uuid())
+  tenantId     String          @unique
+  currentStage OnboardingStage @default(SIGNUP_STARTED)
+
+  // Stage timestamps (for analytics and resume logic)
+  signupAt           DateTime  @default(now())
+  emailVerifiedAt    DateTime?
+  dataroomCreatedAt  DateTime?
+  useCaseSelectedAt  DateTime?
+  workflowSetupAt    DateTime?
+  usersInvitedAt     DateTime?
+  planSelectedAt     DateTime?
+  paymentCompletedAt DateTime?
+  provisioningAt     DateTime?
+  activatedAt        DateTime?
+
+  // Pre-provision data (stored until tenant DB is ready)
+  dataroomName   String?
+  workflowConfig Json    @default("{}")
+
+  // Plan selection
+  selectedPlan    String? // starter, professional, enterprise
+  selectedBilling String? // monthly, yearly
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([currentStage])
+  @@map("onboarding_sessions")
+}
+
+// ============================================
+// PENDING INVITES
+// Team member invites stored in master DB until tenant DB is provisioned
+// After provisioning, these become Users in tenant DB
+// ============================================
+
+model PendingInvite {
+  id          String         @id @default(uuid())
+  tenantId    String
+  email       String
+  role        MembershipRole @default(MEMBER)
+  status      InviteStatus   @default(PENDING)
+  inviteToken String         @unique @default(uuid())
+
+  invitedAt DateTime  @default(now())
+  acceptedAt DateTime?
+  expiresAt  DateTime // 7 days from invite
+
+  // After provisioning - track migration to tenant DB
+  migratedToTenantAt DateTime?
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([tenantId])
+  @@index([inviteToken])
+  @@map("pending_invites")
+}
+
+// ============================================
+// SUBSCRIPTION
+// Payment and plan info for the tenant
+// ============================================
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  tenantId             String             @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  plan                 String // starter, professional, enterprise
+  billing              String // monthly, yearly
+  status               SubscriptionStatus @default(ACTIVE)
+  trialEndsAt          DateTime?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ============================================
+// VERIFICATION TOKEN
+// OTP tokens for email verification and login
+// ============================================
+
+model VerificationToken {
+  id         String       @id @default(uuid())
+  tenantId   String? // For tenant verification (signup/login)
+  email      String
+  token      String // 6-digit OTP
+  purpose    TokenPurpose
+  expiresAt  DateTime
+  verifiedAt DateTime?
+  attempts   Int          @default(0)
+  createdAt  DateTime     @default(now())
+
+  // Relations
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+  @@map("verification_tokens")
+}
+
+// ============================================
+// PLATFORM ADMIN
+// Admins for the platform (not tenant admins)
+// Used for the admin panel to manage tenants
+// ============================================
+
+model PlatformAdmin {
+  id        String      @id @default(uuid())
+  email     String      @unique
+  password  String // bcrypt hashed
+  name      String
+  role      AdminRole   @default(ADMIN)
+  status    AdminStatus @default(ACTIVE)
+  lastLogin DateTime?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@map("platform_admins")
+}

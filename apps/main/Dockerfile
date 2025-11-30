@@ -1,8 +1,9 @@
 # Tequity Main App Dockerfile
 # Multi-stage build for optimized production image
+# Using Debian slim instead of Alpine for better native module compatibility (lightningcss, etc.)
 
-FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl
+FROM node:20-slim AS base
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Install dependencies - copy everything and install
@@ -30,8 +31,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs
+RUN useradd --system --uid 1001 nextjs
 
 # Copy public assets
 COPY --from=builder /app/apps/main/public ./apps/main/public
@@ -40,8 +41,8 @@ COPY --from=builder /app/apps/main/public ./apps/main/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/main/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/main/.next/static ./apps/main/.next/static
 
-# Copy Prisma client (needed at runtime)
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Copy Prisma clients from builder (standalone should include them, but be safe)
+# The generated Prisma clients are at @prisma/master-client and @prisma/tenant-client
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 USER nextjs

@@ -14,10 +14,10 @@ export async function GET() {
 
     return NextResponse.json({
       user: {
-        userId: session.userId,
+        tenantId: session.tenantId,
         email: session.email,
         emailVerified: session.emailVerified,
-        onboardingCompleted: session.onboardingCompleted,
+        tenantSlug: session.tenantSlug,
       },
     });
   } catch (error) {

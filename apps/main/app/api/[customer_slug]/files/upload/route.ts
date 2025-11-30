@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-import { getTenantDb, isValidTenantSlug } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug, prisma } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 import { processFileForRAG, getFileTypeFromExtension } from '@/lib/file-processing'

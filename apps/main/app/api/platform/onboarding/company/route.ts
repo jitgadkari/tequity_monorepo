@@ -1,11 +1,24 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
+import { nanoid } from 'nanoid';
+
+// Generate a unique tenant slug from name
+function generateSlug(name: string): string {
+  const baseSlug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 30);
+
+  // Add unique suffix to ensure uniqueness
+  return `${baseSlug}-${nanoid(6).toLowerCase()}`;
+}
 
 export async function POST(request: Request) {
   try {
     const session = await getSession();
+    console.log('[ONBOARDING/COMPANY] Session:', session ? { tenantId: session.tenantId } : null);
 
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -13,8 +26,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { companyName } = body;
+    console.log('[ONBOARDING/COMPANY] Request body:', { companyName });
 
-    // Only companyName is required (dataroom name)
+    // companyName is the dataroom/workspace name
     if (!companyName) {
       return NextResponse.json(
         { error: 'Dataroom name is required' },
@@ -24,40 +38,53 @@ export async function POST(request: Request) {
 
     const db = getMasterDb();
 
-    // Store company data as JSON
-    const companyData = {
-      companyName,
-      ...body, // Include any additional fields
-    };
+    // Generate a unique slug for the workspace URL
+    const slug = generateSlug(companyName);
+    console.log('[ONBOARDING/COMPANY] Generated slug:', slug);
 
-    // Update or create onboarding record
-    const existingOnboarding = await db.query.tenantOnboarding.findFirst({
-      where: eq(schema.tenantOnboarding.userId, session.userId),
+    // Update tenant with workspace name and slug
+    const updatedTenant = await db.tenant.update({
+      where: { id: session.tenantId },
+      data: {
+        workspaceName: companyName,
+        slug: slug,
+      },
     });
 
-    if (existingOnboarding) {
-      await db
-        .update(schema.tenantOnboarding)
-        .set({
-          companyData,
-          companyInfoCompleted: true,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.tenantOnboarding.userId, session.userId));
-    } else {
-      await db.insert(schema.tenantOnboarding).values({
-        userId: session.userId,
-        companyData,
-        companyInfoCompleted: true,
-      });
-    }
+    console.log('[ONBOARDING/COMPANY] Updated tenant:', {
+      id: updatedTenant.id,
+      workspaceName: updatedTenant.workspaceName,
+      slug: updatedTenant.slug,
+    });
+
+    // Update onboarding session stage
+    const updatedSession = await db.onboardingSession.update({
+      where: { tenantId: session.tenantId },
+      data: {
+        dataroomName: companyName,
+        currentStage: 'DATAROOM_CREATED',
+        dataroomCreatedAt: new Date(),
+      },
+    });
+
+    console.log('[ONBOARDING/COMPANY] Updated onboarding session:', {
+      id: updatedSession.id,
+      currentStage: updatedSession.currentStage,
+      dataroomName: updatedSession.dataroomName,
+    });
+
+    // NOTE: Do NOT set tenantSlug in session here
+    // tenantSlug should only be set after checkout is complete
+    // Setting it early causes the platform layout to redirect to Dashboard
+    // before the user has completed pricing/checkout
 
     return NextResponse.json({
       success: true,
       message: 'Dataroom name saved',
+      slug: slug,
     });
   } catch (error) {
-    console.error('Company onboarding error:', error);
+    console.error('[ONBOARDING/COMPANY] Error:', error);
     return NextResponse.json(
       { error: 'Failed to save dataroom name' },
       { status: 500 }

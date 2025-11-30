@@ -63,8 +63,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Import prisma for status check
-    const { PrismaClient } = await import('@prisma/client')
+    // Import prisma for status check (tenant database)
+    const { PrismaClient } = await import('@prisma/tenant-client')
     const prisma = new PrismaClient()
 
     // Check if pgvector extension exists

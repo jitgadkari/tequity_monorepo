@@ -1,10 +1,11 @@
 // Session payload stored in JWT
+// Note: The "tenant" is the person who signed up. After their DB is provisioned,
+// they become a "user" with owner role in the tenant DB.
 export interface SessionPayload {
-  userId: string;
+  tenantId: string; // ID of the tenant (the person who signed up)
   email: string;
   emailVerified: boolean;
-  onboardingCompleted: boolean;
-  tenantSlug?: string; // Set after checkout/payment
+  tenantSlug?: string | null; // Set after dataroom is named (workspace URL)
 }
 
 // Auth API request/response types
@@ -30,18 +31,14 @@ export interface AuthResponse {
 }
 
 export interface MeResponse {
-  user: {
+  tenant: {
     id: string;
     email: string;
     fullName: string | null;
     emailVerified: boolean;
-    onboardingCompleted: boolean;
+    workspaceName: string | null;
+    slug: string | null;
+    status: string;
   };
-  memberships: {
-    tenantId: string;
-    tenantSlug: string;
-    tenantName: string;
-    role: 'owner' | 'admin' | 'member';
-    tenantStatus: string;
-  }[];
+  onboardingStage: string;
 }

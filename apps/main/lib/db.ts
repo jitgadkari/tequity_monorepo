@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client'
-import { eq } from 'drizzle-orm'
-import { getMasterDb, schema } from './master-db'
+import { PrismaClient } from '@prisma/tenant-client'
+import { getMasterDb } from './master-db'
 import { decrypt } from '@tequity/utils'
 
 // Cache for tenant Prisma clients
@@ -30,8 +29,8 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
   try {
     const db = getMasterDb()
 
-    const tenant = await db.query.tenants.findFirst({
-      where: eq(schema.tenants.slug, tenantSlug),
+    const tenant = await db.tenant.findUnique({
+      where: { slug: tenantSlug },
     })
 
     if (!tenant) {
@@ -110,41 +109,6 @@ export function isValidTenantSlug(slug: string): boolean {
   // Between 2-50 characters
   const slugRegex = /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/
   return slugRegex.test(slug) || (slug.length >= 2 && /^[a-z0-9]+$/.test(slug))
-}
-
-/**
- * Get or create a tenant by slug (in the tenant's own DB)
- * This is for tenant-specific data, not the master DB
- */
-export async function getOrCreateTenant(slug: string, name?: string) {
-  const existing = await prisma.tenant.findUnique({
-    where: { slug }
-  })
-
-  if (existing) {
-    return existing
-  }
-
-  // Create new tenant
-  return prisma.tenant.create({
-    data: {
-      slug,
-      name: name || slug,
-      isActive: true,
-    }
-  })
-}
-
-/**
- * Check if tenant exists and is active
- */
-export async function isTenantActive(slug: string): Promise<boolean> {
-  const tenant = await prisma.tenant.findUnique({
-    where: { slug },
-    select: { isActive: true }
-  })
-
-  return tenant?.isActive ?? false
 }
 
 /**

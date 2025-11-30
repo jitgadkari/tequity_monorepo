@@ -74,6 +74,14 @@ export default function SigninPage() {
         throw new Error(data.error || "Invalid verification code");
       }
 
+      // Store JWT token and user info in localStorage for API calls
+      if (data.token) {
+        localStorage.setItem("tequity_auth_token", data.token);
+      }
+      if (data.user) {
+        localStorage.setItem("tequity_user", JSON.stringify(data.user));
+      }
+
       toast.success("Login successful!");
       router.push(data.redirectUrl || "/workspaces");
     } catch (err) {

@@ -6,6 +6,26 @@
 
 import { chunkTextWithOverlap } from './text-chunker'
 
+// Type definition for pdf-parse result
+interface PdfParseResult {
+  text: string
+  numpages: number
+  numrender: number
+  info: Record<string, unknown>
+  metadata: Record<string, unknown> | null
+  version: string
+}
+
+/**
+ * Helper to dynamically import pdf-parse
+ * pdf-parse v2 exports the function directly, not as default
+ */
+async function getPdfParser(): Promise<(buffer: Buffer) => Promise<PdfParseResult>> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require('pdf-parse') as (buffer: Buffer) => Promise<PdfParseResult>
+  return pdfParse
+}
+
 /**
  * Extract text from PDF file and return chunked text.
  * Matches Python: extract_text_from_pdf()
@@ -19,7 +39,7 @@ export async function extractTextFromPdf(buffer: Buffer): Promise<string[]> {
   try {
     // Dynamic import to avoid DOMMatrix error on module initialization
     // pdf-parse has browser dependencies that cause issues when loaded at module level
-    const pdfParse = (await import('pdf-parse')).default
+    const pdfParse = await getPdfParser()
     const data = await pdfParse(buffer)
 
     let textContent = ''
@@ -62,7 +82,7 @@ export async function getPdfInfo(buffer: Buffer): Promise<{
   wordCount: number
   charCount: number
 }> {
-  const pdfParse = (await import('pdf-parse')).default
+  const pdfParse = await getPdfParser()
   const data = await pdfParse(buffer)
   const text = data.text || ''
 

@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
 import { LogoutButton } from './LogoutButton';
 
 export default async function WorkspacesPage() {
@@ -14,46 +13,38 @@ export default async function WorkspacesPage() {
 
   const db = getMasterDb();
 
-  // Check if onboarding is complete
-  const user = await db.query.users.findFirst({
-    where: eq(schema.users.id, session.userId),
+  // Get tenant with onboarding session
+  const tenant = await db.tenant.findUnique({
+    where: { id: session.tenantId },
+    include: {
+      onboardingSession: true,
+    },
   });
 
-  if (user && !user.onboardingCompleted) {
+  if (!tenant) {
+    redirect('/signin');
+  }
+
+  // Check if onboarding is complete
+  const currentStage = tenant.onboardingSession?.currentStage;
+  if (currentStage !== 'ACTIVE') {
     redirect('/workspace-setup');
   }
 
-  // Get user's tenant memberships
-  const memberships = await db.query.tenantMemberships.findMany({
-    where: eq(schema.tenantMemberships.userId, session.userId),
-  });
-
-  // Get tenant details for each membership
-  const tenants = await Promise.all(
-    memberships.map(async (membership) => {
-      const tenant = await db.query.tenants.findFirst({
-        where: eq(schema.tenants.id, membership.tenantId),
-      });
-      return tenant
-        ? {
-            ...tenant,
-            role: membership.role,
-          }
-        : null;
-    })
-  ).then((results) => results.filter(Boolean));
-
-  // If user has any tenants, redirect to first one's Dashboard
-  if (tenants.length > 0) {
-    const activeTenant = tenants.find((t) => t && t.status === 'active');
-    const anyTenant = tenants.find((t) => t);
-
-    if (activeTenant) {
-      redirect(`/${activeTenant.slug}/Dashboard/Library`);
-    } else if (anyTenant) {
-      redirect(`/${anyTenant.slug}/Dashboard/Library`);
-    }
+  // If tenant is active, redirect to their dashboard
+  if (tenant.slug && tenant.status === 'ACTIVE') {
+    redirect(`/${tenant.slug}/Dashboard/Library`);
   }
+
+  // For now, in the new flow, each tenant (user who signed up) has one workspace
+  // If they need multiple, we can expand this later
+  const tenants = tenant.slug ? [{
+    id: tenant.id,
+    name: tenant.workspaceName || tenant.email,
+    slug: tenant.slug,
+    status: tenant.status,
+    role: 'OWNER',
+  }] : [];
 
   return (
     <div className="min-h-screen py-12 px-4">
@@ -107,19 +98,17 @@ export default async function WorkspacesPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {tenants.map((tenant) => {
-              if (!tenant) return null;
-
-              const isProvisioning = tenant.status === 'provisioning';
-              const isPending = tenant.status === 'pending_payment' || tenant.status === 'pending_onboarding';
-              const isActive = tenant.status === 'active';
+            {tenants.map((t) => {
+              const isProvisioning = t.status === 'PROVISIONING';
+              const isPending = t.status === 'PENDING_ONBOARDING';
+              const isActive = t.status === 'ACTIVE';
 
               return (
-                <div key={tenant.id} className="bg-white rounded-xl shadow-lg p-6">
+                <div key={t.id} className="bg-white rounded-xl shadow-lg p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                       <span className="text-xl font-bold text-blue-600">
-                        {tenant.name.charAt(0).toUpperCase()}
+                        {t.name.charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <span
@@ -135,16 +124,16 @@ export default async function WorkspacesPage() {
                         ? 'Active'
                         : isProvisioning
                         ? 'Setting up...'
-                        : tenant.status.replace(/_/g, ' ')}
+                        : t.status.replace(/_/g, ' ')}
                     </span>
                   </div>
 
-                  <h3 className="text-lg font-semibold text-slate-900">{tenant.name}</h3>
-                  <p className="text-sm text-slate-600 mb-4">/{tenant.slug}</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{t.name}</h3>
+                  <p className="text-sm text-slate-600 mb-4">/{t.slug}</p>
 
                   {isActive ? (
                     <Link
-                      href={`/${tenant.slug}/Dashboard`}
+                      href={`/${t.slug}/Dashboard`}
                       className="block w-full py-2 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 text-center transition"
                     >
                       Open Workspace

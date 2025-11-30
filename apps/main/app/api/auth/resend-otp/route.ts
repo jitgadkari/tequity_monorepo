@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { eq, and, desc } from 'drizzle-orm';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
 import { generateOtp, getOtpExpiryDate, formatOtpForConsole } from '@tequity/utils';
 
 export async function POST(request: Request) {
@@ -17,12 +16,12 @@ export async function POST(request: Request) {
     const normalizedEmail = email.toLowerCase().trim();
     const db = getMasterDb();
 
-    // Find user
-    const user = await db.query.users.findFirst({
-      where: eq(schema.users.email, normalizedEmail),
+    // Find tenant
+    const tenant = await db.tenant.findUnique({
+      where: { email: normalizedEmail },
     });
 
-    if (!user) {
+    if (!tenant) {
       return NextResponse.json(
         { error: 'No account found with this email' },
         { status: 404 }
@@ -30,12 +29,14 @@ export async function POST(request: Request) {
     }
 
     // Check for recent OTP to prevent spam
-    const recentToken = await db.query.verificationTokens.findFirst({
-      where: and(
-        eq(schema.verificationTokens.email, normalizedEmail),
-        eq(schema.verificationTokens.purpose, purpose)
-      ),
-      orderBy: [desc(schema.verificationTokens.createdAt)],
+    const recentToken = await db.verificationToken.findFirst({
+      where: {
+        email: normalizedEmail,
+        purpose: purpose.toUpperCase(),
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
 
     if (recentToken) {
@@ -56,12 +57,14 @@ export async function POST(request: Request) {
     const expiresAt = getOtpExpiryDate();
 
     // Store new OTP
-    await db.insert(schema.verificationTokens).values({
-      userId: user.id,
-      email: normalizedEmail,
-      token: otp,
-      purpose,
-      expiresAt,
+    await db.verificationToken.create({
+      data: {
+        tenantId: tenant.id,
+        email: normalizedEmail,
+        token: otp,
+        purpose: purpose.toUpperCase(),
+        expiresAt,
+      },
     });
 
     // Log OTP to console (development)

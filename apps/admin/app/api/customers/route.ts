@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, schema } from '@/lib/db';
-import { like, or, asc, desc, sql, eq } from 'drizzle-orm';
+import { db } from '@/lib/db';
 import { requireAdmin, validateServiceApiKey } from '@/lib/auth';
-
-const { tenants } = schema;
 
 // GET /api/customers - List all tenants with search and pagination
 export async function GET(request: NextRequest) {
@@ -16,20 +13,18 @@ export async function GET(request: NextRequest) {
 
     // Service endpoint: GET /api/customers?slug=xxx
     if (slug && isServiceCall) {
-      const result = await db
-        .select()
-        .from(tenants)
-        .where(eq(tenants.slug, slug))
-        .limit(1);
+      const tenant = await db.tenant.findUnique({
+        where: { slug },
+      });
 
-      if (result.length === 0) {
+      if (!tenant) {
         return NextResponse.json(
           { error: 'Tenant not found' },
           { status: 404 }
         );
       }
 
-      return NextResponse.json({ data: result[0] });
+      return NextResponse.json({ data: tenant });
     }
 
     // Admin authentication required for listing tenants
@@ -42,54 +37,67 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'desc';
 
     // Calculate offset
-    const offset = (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
     // Build search conditions
     const searchConditions = search
-      ? or(
-          like(tenants.name, `%${search}%`),
-          like(tenants.slug, `%${search}%`)
-        )
-      : undefined;
+      ? {
+          OR: [
+            { workspaceName: { contains: search, mode: 'insensitive' as const } },
+            { slug: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
 
     // Get total count
-    const [countResult] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(tenants)
-      .where(searchConditions);
+    const totalCount = await db.tenant.count({
+      where: searchConditions,
+    });
 
-    const totalCount = Number(countResult.count);
     const totalPages = Math.ceil(totalCount / limit);
 
-    // Get tenants with pagination
-    const orderColumn = sortBy === 'updatedAt' ? tenants.updatedAt : tenants.createdAt;
-    const orderDirection = sortOrder === 'asc' ? asc(orderColumn) : desc(orderColumn);
-
-    const result = await db
-      .select()
-      .from(tenants)
-      .where(searchConditions)
-      .orderBy(orderDirection)
-      .limit(limit)
-      .offset(offset);
+    // Get tenants with pagination and include onboarding session for stage
+    const tenants = await db.tenant.findMany({
+      where: searchConditions,
+      orderBy: {
+        [sortBy]: sortOrder,
+      },
+      skip,
+      take: limit,
+      include: {
+        onboardingSession: {
+          select: {
+            currentStage: true,
+          },
+        },
+        subscription: {
+          select: {
+            plan: true,
+            status: true,
+          },
+        },
+      },
+    });
 
     // Transform to match frontend expectations
-    const customers = result.map((tenant) => ({
+    const customers = tenants.map((tenant) => ({
       id: tenant.id,
-      name: tenant.name,
-      email: tenant.slug, // Using slug as identifier
+      name: tenant.workspaceName || tenant.email,
+      email: tenant.email,
       slug: tenant.slug,
-      plan: 'starter', // Will come from subscriptions table
-      status: tenant.status === 'active' ? 'active' :
-              tenant.status === 'suspended' ? 'inactive' : 'pending',
+      plan: tenant.subscription?.plan || 'starter',
+      status: tenant.status === 'ACTIVE' ? 'active' :
+              tenant.status === 'SUSPENDED' ? 'inactive' : 'pending',
+      rawStatus: tenant.status,
+      stage: tenant.onboardingSession?.currentStage || 'SIGNUP_STARTED',
       lastActive: tenant.updatedAt,
-      logo: tenant.name.charAt(0).toUpperCase(),
-      logoColor: getColorFromString(tenant.name),
+      logo: (tenant.workspaceName || tenant.email || 'T').charAt(0).toUpperCase(),
+      logoColor: getColorFromString(tenant.workspaceName || tenant.email || 'Tenant'),
+      ownerEmail: tenant.email,
       createdAt: tenant.createdAt,
       updatedAt: tenant.updatedAt,
       useCase: tenant.useCase,
-      companySize: tenant.companySize,
-      industry: tenant.industry,
     }));
 
     return NextResponse.json({
@@ -101,9 +109,9 @@ export async function GET(request: NextRequest) {
         totalPages,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching tenants:', error);
-    if (error.message === 'Unauthorized') {
+    if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -132,49 +140,66 @@ export async function POST(request: NextRequest) {
     await requireAdmin();
     const body = await request.json();
 
-    const { name, slug, useCase, companySize, industry } = body;
+    const { name, email, slug, useCase } = body;
 
-    if (!name) {
+    if (!email) {
       return NextResponse.json(
-        { error: 'Missing required field: name' },
+        { error: 'Missing required field: email' },
         { status: 400 }
       );
     }
 
     // Generate slug if not provided
-    const tenantSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const tenantSlug = slug || (name || email.split('@')[0]).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
     // Check if slug exists
-    const existing = await db
-      .select()
-      .from(tenants)
-      .where(eq(tenants.slug, tenantSlug))
-      .limit(1);
+    const existingSlug = await db.tenant.findUnique({
+      where: { slug: tenantSlug },
+    });
 
-    if (existing.length > 0) {
+    if (existingSlug) {
       return NextResponse.json(
         { error: 'A tenant with this slug already exists' },
         { status: 400 }
       );
     }
 
-    // Insert new tenant
-    const [newTenant] = await db
-      .insert(tenants)
-      .values({
-        name,
+    // Check if email exists
+    const existingEmail = await db.tenant.findUnique({
+      where: { email },
+    });
+
+    if (existingEmail) {
+      return NextResponse.json(
+        { error: 'A tenant with this email already exists' },
+        { status: 400 }
+      );
+    }
+
+    // Insert new tenant with onboarding session
+    const newTenant = await db.tenant.create({
+      data: {
+        email,
+        workspaceName: name,
         slug: tenantSlug,
-        status: 'pending_onboarding',
+        status: 'PENDING_ONBOARDING',
         useCase,
-        companySize,
-        industry,
-      })
-      .returning();
+        emailVerified: false,
+        onboardingSession: {
+          create: {
+            currentStage: 'SIGNUP_STARTED',
+          },
+        },
+      },
+      include: {
+        onboardingSession: true,
+      },
+    });
 
     return NextResponse.json(newTenant, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating tenant:', error);
-    if (error.message === 'Unauthorized') {
+    if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

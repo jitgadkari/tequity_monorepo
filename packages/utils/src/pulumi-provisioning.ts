@@ -46,7 +46,7 @@ export interface PulumiProvisioningResult extends GcpProvisioningResult {
 }
 
 // Re-export the legacy interface name
-export { PulumiProvisioningResult as ProvisioningResult };
+export type { PulumiProvisioningResult as ProvisioningResult };
 
 /**
  * Get the path to the Pulumi project

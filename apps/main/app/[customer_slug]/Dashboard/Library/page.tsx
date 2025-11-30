@@ -84,6 +84,7 @@ interface LibraryContentProps {
     React.SetStateAction<Array<{ id: string; name: string; fileCount: number }>>
   >;
   handleDownload: (file: FileItem) => void;
+  deleteFile: (fileId: string) => Promise<boolean>;
 }
 
 function LibraryContent({
@@ -91,6 +92,7 @@ function LibraryContent({
   setFiles,
   folders,
   handleDownload,
+  deleteFile,
 }: LibraryContentProps) {
   const router = useRouter();
   const { createNewChat, activeChat, activeChatId, chats, selectChat } =
@@ -2070,24 +2072,29 @@ function LibraryContent({
           isOpen={!!fileToDelete}
           itemName={fileToDelete?.name || ""}
           onCancel={() => setFileToDelete(null)}
-          onConfirm={() => {
-            if (!fileToDelete) return;
+          onConfirm={async () => {
+            if (!fileToDelete?.id) return;
 
-            // Close PDF viewer if the deleted file is currently open
-            if (selectedFile?.id === fileToDelete.id) {
-              setIsPDFViewerOpen(false);
-              setSelectedFile(null);
+            // Call the API to delete the file
+            const success = await deleteFile(fileToDelete.id);
+
+            if (success) {
+              // Close PDF viewer if the deleted file is currently open
+              if (selectedFile?.id === fileToDelete.id) {
+                setIsPDFViewerOpen(false);
+                setSelectedFile(null);
+              }
+              // Also remove from selected files if it's selected
+              setSelectedFiles((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(fileToDelete.id || "");
+                return newSet;
+              });
+              toast.success("File deleted successfully");
+            } else {
+              toast.error("Failed to delete file");
             }
-            // Remove the file from the files array
-            setFiles((prevFiles) =>
-              prevFiles.filter((f) => f.id !== fileToDelete.id)
-            );
-            // Also remove from selected files if it's selected
-            setSelectedFiles((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(fileToDelete.id || "");
-              return newSet;
-            });
+
             setFileToDelete(null);
           }}
         />
@@ -2101,7 +2108,8 @@ export default function LibraryPage() {
     files: contextFiles,
     folders: contextFolders,
     loadFiles,
-    isLoading
+    isLoading,
+    deleteFile,
   } = useFiles();
 
   console.log('[LibraryPage] Rendering with contextFiles:', contextFiles.length, 'isLoading:', isLoading);
@@ -2190,6 +2198,7 @@ export default function LibraryPage() {
           folders={localFolders}
           setFolders={setLocalFolders}
           handleDownload={handleDownload}
+          deleteFile={deleteFile}
         />
       )}
     </DashboardLayout>

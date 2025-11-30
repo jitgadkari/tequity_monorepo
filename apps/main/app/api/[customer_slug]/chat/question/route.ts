@@ -4,6 +4,7 @@ import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 import { z } from 'zod'
 import { processQuery, processQueryStream } from '@/lib/ai'
+import type { Prisma } from '@prisma/tenant-client'
 
 const questionSchema = z.object({
   question: z.string().min(1).max(2000),
@@ -87,7 +88,7 @@ export async function POST(
     }
 
     // If session provided, verify it exists and belongs to user
-    let session = null
+    let session: { id: string; isActive: boolean; createdAt: Date; updatedAt: Date; userId: string | null; dataroomId: string; title: string | null } | null = null
     if (sessionId) {
       session = await prisma.chatSession.findFirst({
         where: {
@@ -157,7 +158,7 @@ export async function POST(
                   sessionId: session.id,
                   role: 'assistant',
                   content: fullAnswer,
-                  metadata: { sources },
+                  metadata: { sources } as Prisma.InputJsonValue,
                 },
               })
 
@@ -227,7 +228,7 @@ export async function POST(
             sources: response.sources,
             category: response.category,
             processingTime: response.processingTime,
-          },
+          } as Prisma.InputJsonValue,
         },
       })
 

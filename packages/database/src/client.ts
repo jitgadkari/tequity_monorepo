@@ -1,37 +1,34 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema';
+import { PrismaClient } from '@prisma/master-client';
 
-// Singleton pattern for database connection
-let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
-let client: ReturnType<typeof postgres> | null = null;
+// Singleton pattern for Prisma client
+// Prevents multiple instances during development hot reloads
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
 
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log:
+      process.env.NODE_ENV === 'development'
+        ? ['query', 'error', 'warn']
+        : ['error'],
+  });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
+
+// Export for convenience
+export { PrismaClient };
+export type { Prisma } from '@prisma/master-client';
+
+// Helper function to get the database client
 export function getDb() {
-  if (!db) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error('DATABASE_URL environment variable is not set');
-    }
-
-    client = postgres(connectionString, {
-      max: 10,
-      idle_timeout: 20,
-      connect_timeout: 10,
-    });
-
-    db = drizzle(client, { schema });
-  }
-
-  return db;
+  return prisma;
 }
 
-export async function closeDb() {
-  if (client) {
-    await client.end();
-    client = null;
-    db = null;
-  }
+// Helper function to disconnect (useful for tests/scripts)
+export async function disconnectDb() {
+  await prisma.$disconnect();
 }
-
-// Export types for convenience
-export type Database = ReturnType<typeof getDb>;

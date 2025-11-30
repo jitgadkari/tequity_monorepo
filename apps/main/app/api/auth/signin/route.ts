@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { getMasterDb, schema } from '@/lib/master-db';
+import { getMasterDb } from '@/lib/master-db';
 import { generateOtp, getOtpExpiryDate, formatOtpForConsole } from '@tequity/utils';
 
 export async function POST(request: Request) {
@@ -14,12 +13,12 @@ export async function POST(request: Request) {
     const normalizedEmail = email.toLowerCase().trim();
     const db = getMasterDb();
 
-    // Check if user exists
-    const user = await db.query.users.findFirst({
-      where: eq(schema.users.email, normalizedEmail),
+    // Check if tenant exists
+    const tenant = await db.tenant.findUnique({
+      where: { email: normalizedEmail },
     });
 
-    if (!user) {
+    if (!tenant) {
       return NextResponse.json(
         { error: 'No account found with this email. Please sign up first.' },
         { status: 404 }
@@ -31,12 +30,14 @@ export async function POST(request: Request) {
     const expiresAt = getOtpExpiryDate();
 
     // Store OTP
-    await db.insert(schema.verificationTokens).values({
-      userId: user.id,
-      email: normalizedEmail,
-      token: otp,
-      purpose: 'login_otp',
-      expiresAt,
+    await db.verificationToken.create({
+      data: {
+        tenantId: tenant.id,
+        email: normalizedEmail,
+        token: otp,
+        purpose: 'LOGIN_OTP',
+        expiresAt,
+      },
     });
 
     // Log OTP to console (development)

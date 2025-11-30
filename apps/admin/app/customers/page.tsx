@@ -14,6 +14,7 @@ interface Customer {
   email: string;
   plan: string;
   status: "active" | "inactive" | "pending";
+  stage: string;
   lastActive: string;
   logo: string;
   logoColor: string;
@@ -124,7 +125,7 @@ export default function CustomersPage() {
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-6">
           {/* Page Title */}
           <h1 className={`text-2xl font-bold mb-6 ${isLight ? "text-gray-900" : "text-white"}`}>
-            Datarooms
+            Tenants
           </h1>
 
           {/* Search and Actions Bar */}
@@ -162,7 +163,7 @@ export default function CustomersPage() {
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              + Add Dataroom
+              + Add Tenant
             </button>
           </div>
 
@@ -187,7 +188,12 @@ export default function CustomersPage() {
                     <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                       isLight ? "text-gray-600" : "text-zinc-400"
                     }`}>
-                      Dataroom
+                      Tenant
+                    </th>
+                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                      isLight ? "text-gray-600" : "text-zinc-400"
+                    }`}>
+                      Stage
                     </th>
                     <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                       isLight ? "text-gray-600" : "text-zinc-400"
@@ -202,7 +208,7 @@ export default function CustomersPage() {
                     <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                       isLight ? "text-gray-600" : "text-zinc-400"
                     }`}>
-                      Billing Date
+                      Last Active
                     </th>
                   </tr>
                 </thead>
@@ -211,17 +217,17 @@ export default function CustomersPage() {
                 }`}>
                   {loading ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center">
+                      <td colSpan={6} className="px-6 py-12 text-center">
                         <div className={`text-sm ${isLight ? "text-gray-600" : "text-zinc-400"}`}>
-                          Loading customers...
+                          Loading tenants...
                         </div>
                       </td>
                     </tr>
                   ) : customers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center">
+                      <td colSpan={6} className="px-6 py-12 text-center">
                         <div className={`text-sm ${isLight ? "text-gray-600" : "text-zinc-400"}`}>
-                          No customers found
+                          No tenants found
                         </div>
                       </td>
                     </tr>
@@ -262,6 +268,29 @@ export default function CustomersPage() {
                             </div>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            customer.stage === "ACTIVE"
+                              ? isLight
+                                ? "bg-green-100 text-green-700 border border-green-200"
+                                : "bg-green-950/50 text-green-400 border border-green-900"
+                              : customer.stage === "PROVISIONING"
+                              ? isLight
+                                ? "bg-blue-100 text-blue-700 border border-blue-200"
+                                : "bg-blue-950/50 text-blue-400 border border-blue-900"
+                              : customer.stage === "PAYMENT_COMPLETED" || customer.stage === "PAYMENT_PENDING" || customer.stage === "PLAN_SELECTED"
+                              ? isLight
+                                ? "bg-purple-100 text-purple-700 border border-purple-200"
+                                : "bg-purple-950/50 text-purple-400 border border-purple-900"
+                              : isLight
+                              ? "bg-orange-100 text-orange-700 border border-orange-200"
+                              : "bg-orange-950/50 text-orange-400 border border-orange-900"
+                          }`}
+                        >
+                          {customer.stage?.replace(/_/g, ' ') || 'Unknown'}
+                        </span>
                       </td>
                       <td className={`px-6 py-4 text-sm ${
                         isLight ? "text-gray-700" : "text-zinc-300"
@@ -406,7 +435,7 @@ export default function CustomersPage() {
                 isLight ? "text-green-700" : "text-green-400"
               }`}
             >
-              Dataroom Successfully Created
+              Tenant Successfully Created
             </span>
           </div>
         </div>

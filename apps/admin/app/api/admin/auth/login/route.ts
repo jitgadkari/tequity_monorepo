@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { platformAdmins } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
 import { comparePassword, createToken, setAdminToken } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -17,12 +15,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find admin by email
-    const [admin] = await db
-      .select()
-      .from(platformAdmins)
-      .where(eq(platformAdmins.email, email))
-      .limit(1);
+    // Find admin by email using Prisma
+    const admin = await db.platformAdmin.findUnique({
+      where: { email },
+    });
 
     if (!admin) {
       return NextResponse.json(
@@ -32,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if admin is active
-    if (admin.status !== 'active') {
+    if (admin.status !== 'ACTIVE') {
       return NextResponse.json(
         { error: 'Account is not active' },
         { status: 403 }
@@ -49,17 +45,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last login
-    await db
-      .update(platformAdmins)
-      .set({ lastLogin: new Date() })
-      .where(eq(platformAdmins.id, admin.id));
+    await db.platformAdmin.update({
+      where: { id: admin.id },
+      data: { lastLogin: new Date() },
+    });
 
     // Create JWT token
     const token = await createToken({
       id: admin.id,
       email: admin.email,
       name: admin.name,
-      role: admin.role,
+      role: admin.role === 'SUPER_ADMIN' ? 'super_admin' : 'admin',
     });
 
     // Set cookie
@@ -71,7 +67,7 @@ export async function POST(request: NextRequest) {
         id: admin.id,
         email: admin.email,
         name: admin.name,
-        role: admin.role,
+        role: admin.role === 'SUPER_ADMIN' ? 'super_admin' : 'admin',
       },
     });
   } catch (error) {

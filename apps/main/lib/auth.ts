@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { NextRequest } from 'next/server'
+import { isTenantActive } from './tenant-status'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'fallback-secret-change-in-production'
@@ -73,6 +74,7 @@ export async function verifyAuth(request: NextRequest): Promise<JWTPayload | nul
 
 /**
  * Verify auth and check tenant match
+ * Also validates tenant is active (not suspended/cancelled)
  */
 export async function verifyAuthWithTenant(
   request: NextRequest,
@@ -87,6 +89,13 @@ export async function verifyAuthWithTenant(
   // Verify user belongs to this tenant
   if (payload.tenantSlug !== tenantSlug) {
     console.error(`Tenant mismatch: user belongs to ${payload.tenantSlug}, accessing ${tenantSlug}`)
+    return null
+  }
+
+  // Check tenant is active (cached check, fast)
+  const isActive = await isTenantActive(tenantSlug)
+  if (!isActive) {
+    console.warn(`[Auth] Tenant ${tenantSlug} is not active, blocking access`)
     return null
   }
 

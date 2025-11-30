@@ -3,6 +3,7 @@ import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 import { z } from 'zod'
+import type { Prisma } from '@prisma/tenant-client'
 
 const addMessageSchema = z.object({
   role: z.enum(['user', 'assistant', 'system']),
@@ -136,8 +137,8 @@ export async function POST(
         sessionId,
         role,
         content,
-        metadata: metadata || null,
-        fileAttachments: fileAttachments || null,
+        metadata: metadata as Prisma.InputJsonValue | undefined,
+        fileAttachments: fileAttachments as Prisma.InputJsonValue | undefined,
       },
     })
 

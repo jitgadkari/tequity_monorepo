@@ -1,0 +1,53 @@
+# Dependencies (will be reinstalled in container)
+node_modules
+**/node_modules
+
+# Build outputs (will be rebuilt in container)
+.next
+**/.next
+dist
+**/dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+coverage
+**/__tests__
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (will be provided at runtime)
+.env
+.env.*
+!.env.example
+
+# Turbo cache
+.turbo
+
+# Misc
+*.tgz
+.npmrc

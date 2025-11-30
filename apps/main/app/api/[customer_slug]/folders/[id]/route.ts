@@ -94,7 +94,7 @@ export async function GET(
     }
 
     // Build breadcrumb path
-    const breadcrumbs = await buildBreadcrumbs(folderId)
+    const breadcrumbs = await buildBreadcrumbs(folderId, prisma)
 
     return successResponse({
       folder: {
@@ -255,7 +255,7 @@ export async function PATCH(
         }
 
         // Check if target is a descendant of the folder being moved
-        const isDescendant = await checkIsDescendant(parentId, folderId)
+        const isDescendant = await checkIsDescendant(parentId, folderId, prisma)
         if (isDescendant) {
           return ApiErrors.validationError('Cannot move folder into its own subfolder')
         }
@@ -376,7 +376,10 @@ export async function DELETE(
 /**
  * Build breadcrumb path for a folder
  */
-async function buildBreadcrumbs(folderId: string): Promise<Array<{ id: string; name: string }>> {
+async function buildBreadcrumbs(
+  folderId: string,
+  prisma: Awaited<ReturnType<typeof getTenantDb>>
+): Promise<Array<{ id: string; name: string }>> {
   const breadcrumbs: Array<{ id: string; name: string }> = []
   let currentId: string | null = folderId
 
@@ -400,7 +403,11 @@ async function buildBreadcrumbs(folderId: string): Promise<Array<{ id: string; n
 /**
  * Check if targetId is a descendant of parentId
  */
-async function checkIsDescendant(targetId: string, parentId: string): Promise<boolean> {
+async function checkIsDescendant(
+  targetId: string,
+  parentId: string,
+  prisma: Awaited<ReturnType<typeof getTenantDb>>
+): Promise<boolean> {
   let currentId: string | null = targetId
 
   while (currentId) {
