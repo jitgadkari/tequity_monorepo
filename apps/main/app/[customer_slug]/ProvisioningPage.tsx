@@ -7,20 +7,33 @@ import { CheckCircle2, Circle, Loader2 } from 'lucide-react';
 interface ProvisioningPageProps {
   tenantId: string;
   workspaceName?: string;
+  useSharedInstance?: boolean;
 }
 
-const PROVISIONING_STEPS = [
+// Step durations for DEDICATED instance (creates new Cloud SQL, ~5-10 min)
+const DEDICATED_STEPS = [
   { id: 'database', label: 'Creating your database', duration: 180 },
   { id: 'storage', label: 'Setting up cloud storage', duration: 30 },
   { id: 'security', label: 'Configuring security', duration: 30 },
   { id: 'finalizing', label: 'Finalizing workspace', duration: 60 },
 ];
 
-export function ProvisioningPage({ tenantId, workspaceName }: ProvisioningPageProps) {
+// Step durations for SHARED instance (uses existing Cloud SQL, ~30 sec)
+const SHARED_STEPS = [
+  { id: 'database', label: 'Creating your database', duration: 10 },
+  { id: 'storage', label: 'Setting up cloud storage', duration: 8 },
+  { id: 'security', label: 'Configuring security', duration: 5 },
+  { id: 'finalizing', label: 'Finalizing workspace', duration: 7 },
+];
+
+export function ProvisioningPage({ tenantId, workspaceName, useSharedInstance = true }: ProvisioningPageProps) {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isOvertime, setIsOvertime] = useState(false);
+
+  // Select step durations based on provisioning mode
+  const PROVISIONING_STEPS = useSharedInstance ? SHARED_STEPS : DEDICATED_STEPS;
 
   useEffect(() => {
     // Note: Provisioning is already triggered by the checkout API
@@ -56,7 +69,7 @@ export function ProvisioningPage({ tenantId, workspaceName }: ProvisioningPagePr
     // All steps complete but still provisioning - we're in overtime
     setCurrentStep(PROVISIONING_STEPS.length - 1);
     setIsOvertime(true);
-  }, [elapsedTime]);
+  }, [elapsedTime, PROVISIONING_STEPS]);
 
   const estimatedTotal = PROVISIONING_STEPS.reduce((sum, step) => sum + step.duration, 0);
   const remainingTime = Math.max(0, estimatedTotal - elapsedTime);
@@ -80,7 +93,10 @@ export function ProvisioningPage({ tenantId, workspaceName }: ProvisioningPagePr
             Setting up {workspaceName || 'your workspace'}
           </h1>
           <p className="text-slate-500 mt-2">
-            This typically takes 4-6 minutes
+            {useSharedInstance
+              ? 'This typically takes less than a minute'
+              : 'This typically takes 4-6 minutes'
+            }
           </p>
         </div>
 
@@ -113,7 +129,10 @@ export function ProvisioningPage({ tenantId, workspaceName }: ProvisioningPagePr
                 +{overtimeMinutes}:{overtimeSecondsDisplay.toString().padStart(2, '0')}
               </p>
               <p className="text-xs text-slate-500 mt-2">
-                Please wait, this can take up to 15 minutes for complex setups
+                {useSharedInstance
+                  ? 'Almost there! Finalizing your workspace...'
+                  : 'Please wait, this can take up to 15 minutes for complex setups'
+                }
               </p>
             </>
           ) : (

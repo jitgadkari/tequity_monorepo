@@ -131,7 +131,7 @@ async function provisionSupabase(
 }
 
 /**
- * Pulumi/GCP provisioning - uses Pulumi Automation API
+ * Pulumi/GCP provisioning - uses Pulumi Automation API (slower, creates dedicated resources)
  */
 async function provisionPulumi(
   db: DbClient,
@@ -158,6 +158,10 @@ async function provisionPulumi(
     },
   });
 
+  // Check if we should use shared instance mode (fast provisioning)
+  const useSharedInstance = process.env.USE_SHARED_INSTANCE === 'true';
+  console.log(`[Pulumi/GCP] Using ${useSharedInstance ? 'SHARED' : 'DEDICATED'} instance mode`);
+
   const provisionWithPulumi = await getProvisionWithPulumi();
   const result = await provisionWithPulumi({
     tenantId,
@@ -165,6 +169,11 @@ async function provisionPulumi(
     tenantName,
     environment: environment as 'development' | 'staging' | 'production',
     region: process.env.GCP_REGION || 'us-central1',
+    // Shared instance configuration
+    useSharedInstance,
+    sharedInstanceName: process.env.SHARED_SQL_INSTANCE_NAME,
+    sharedInstanceConnectionName: process.env.SHARED_SQL_CONNECTION_NAME,
+    sharedInstanceIp: process.env.SHARED_SQL_IP,
   });
 
   if (!result.success) {
@@ -515,6 +524,8 @@ export async function POST(request: Request) {
           break;
 
         case 'pulumi':
+          // Pulumi uses index-shared.ts when USE_SHARED_INSTANCE=true
+          // which creates only DB + user (fast ~15-30 sec)
           result = await provisionPulumi(db, tenantId, tenant);
           break;
 

@@ -20,6 +20,12 @@ export interface PulumiProvisioningConfig {
   tenantName: string;
   region?: string;
   environment?: 'development' | 'staging' | 'production';
+  // Use shared Cloud SQL instance instead of creating a new one per tenant
+  useSharedInstance?: boolean;
+  // Shared instance configuration (required if useSharedInstance is true)
+  sharedInstanceName?: string;
+  sharedInstanceConnectionName?: string;
+  sharedInstanceIp?: string;
 }
 
 export interface GcpProvisioningResult {
@@ -52,8 +58,9 @@ import * as fs from 'fs';
 
 /**
  * Get the path to the Pulumi project
+ * @param useSharedInstance - If true, use the shared instance provisioner (index-shared.ts)
  */
-function getPulumiProjectPath(): string {
+function getPulumiProjectPath(useSharedInstance: boolean = false): string {
   // The Pulumi project is in infrastructure/tenant-provisioner relative to the monorepo root
   // We need to find it relative to where this module is running
   const possiblePaths = [
@@ -71,6 +78,7 @@ function getPulumiProjectPath(): string {
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
       console.log(`[Pulumi] Found infrastructure at: ${p}`);
+      console.log(`[Pulumi] Using ${useSharedInstance ? 'shared instance' : 'per-tenant'} provisioner`);
       return p;
     }
   }
@@ -88,10 +96,13 @@ async function getOrCreateStack(
   environment: string
 ): Promise<Stack> {
   const stackName = `tenant-${config.tenantSlug}-${environment}`;
-  const projectPath = getPulumiProjectPath();
+  const projectPath = getPulumiProjectPath(config.useSharedInstance);
 
   console.log(`[Pulumi] Using project path: ${projectPath}`);
   console.log(`[Pulumi] Stack name: ${stackName}`);
+
+  // Note: The unified index.ts now handles both shared and dedicated modes
+  // based on whether tequity:sharedSqlInstance config is set
 
   try {
     // Try to select existing stack
@@ -135,15 +146,35 @@ async function configureStack(
   await stack.setConfig('tequity:tenantId', { value: config.tenantId });
   await stack.setConfig('tequity:environment', { value: environment });
 
-  // Set environment-specific config
-  if (environment === 'production') {
-    await stack.setConfig('tequity:databaseTier', { value: 'db-custom-1-3840' });
-    await stack.setConfig('tequity:enableBackups', { value: 'true' });
-    await stack.setConfig('tequity:deletionProtection', { value: 'true' });
-  } else {
-    await stack.setConfig('tequity:databaseTier', { value: 'db-f1-micro' });
-    await stack.setConfig('tequity:enableBackups', { value: 'false' });
-    await stack.setConfig('tequity:deletionProtection', { value: 'false' });
+  // Shared instance configuration - ALWAYS pass if available
+  // The Pulumi program will decide based on whether sharedSqlInstance is set
+  const sharedInstanceName = config.sharedInstanceName || process.env.SHARED_SQL_INSTANCE_NAME;
+  const sharedConnectionName = config.sharedInstanceConnectionName || process.env.SHARED_SQL_CONNECTION_NAME;
+  const sharedInstanceIp = config.sharedInstanceIp || process.env.SHARED_SQL_IP;
+
+  if (sharedInstanceName) {
+    await stack.setConfig('tequity:sharedSqlInstance', { value: sharedInstanceName });
+    console.log(`[Pulumi] Configuring shared instance: ${sharedInstanceName}`);
+
+    if (sharedConnectionName) {
+      await stack.setConfig('tequity:sharedSqlConnectionName', { value: sharedConnectionName });
+    }
+    if (sharedInstanceIp) {
+      await stack.setConfig('tequity:sharedSqlIp', { value: sharedInstanceIp });
+    }
+  }
+
+  if (!config.useSharedInstance && !sharedInstanceName) {
+    // Set environment-specific config for per-tenant instance
+    if (environment === 'production') {
+      await stack.setConfig('tequity:databaseTier', { value: 'db-custom-1-3840' });
+      await stack.setConfig('tequity:enableBackups', { value: 'true' });
+      await stack.setConfig('tequity:deletionProtection', { value: 'true' });
+    } else {
+      await stack.setConfig('tequity:databaseTier', { value: 'db-f1-micro' });
+      await stack.setConfig('tequity:enableBackups', { value: 'false' });
+      await stack.setConfig('tequity:deletionProtection', { value: 'false' });
+    }
   }
 
   // Skip service account key creation by default (org policies often block this)

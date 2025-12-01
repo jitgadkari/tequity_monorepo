@@ -32,8 +32,10 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
   if (tenant.status !== 'ACTIVE') {
     // Tenant is not active (provisioning, suspended, etc.)
     if (tenant.status === 'PROVISIONING') {
+      // Determine provisioning mode from env
+      const useSharedInstance = process.env.USE_SHARED_INSTANCE === 'true';
       // Show provisioning page with auto-refresh
-      return <ProvisioningPage tenantId={tenant.id} workspaceName={tenant.workspaceName || undefined} />;
+      return <ProvisioningPage tenantId={tenant.id} workspaceName={tenant.workspaceName || undefined} useSharedInstance={useSharedInstance} />;
     }
 
     // For other non-active states, show error

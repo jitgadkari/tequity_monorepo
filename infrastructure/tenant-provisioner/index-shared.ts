@@ -3,10 +3,16 @@ import * as gcp from "@pulumi/gcp";
 import * as random from "@pulumi/random";
 
 /**
- * Shared Instance Tenant Provisioner
+ * Shared Instance Tenant Provisioner (FAST MODE)
  *
- * This creates tenant resources using a SHARED Cloud SQL instance.
- * Much faster (~30 seconds) and cheaper than creating a new instance per tenant.
+ * This creates ONLY the essential tenant resources using a SHARED Cloud SQL instance:
+ * 1. Database on the shared instance (~5 sec)
+ * 2. Database user with password (~5 sec)
+ *
+ * Total time: ~10-15 seconds
+ *
+ * Service Account and per-tenant Storage Bucket are NOT created here.
+ * Instead, tenants use a shared storage bucket with tenant-prefixed paths.
  *
  * Prerequisites:
  * - A shared Cloud SQL instance must already exist
@@ -22,8 +28,10 @@ const project = gcpConfig.require("project");
 const region = gcpConfig.get("region") || "us-central1";
 
 // Shared instance configuration
-const sharedInstanceName = config.get("sharedSqlInstance") || `tequity-shared-${environment}`;
-const sharedInstanceConnectionName = config.get("sharedSqlConnectionName") || `${project}:${region}:${sharedInstanceName}`;
+// These should be set from the shared-instance Pulumi outputs or .env.shared-instance
+const sharedInstanceName = config.get("sharedSqlInstance") || process.env.SHARED_SQL_INSTANCE_NAME || `tequity-shared-${environment}`;
+const sharedInstanceConnectionName = config.get("sharedSqlConnectionName") || process.env.SHARED_SQL_CONNECTION_NAME || `${project}:${region}:${sharedInstanceName}`;
+const sharedInstanceIp = config.get("sharedSqlIp") || process.env.SHARED_SQL_IP;
 
 // Get tenant ID
 const tenantId = config.get("tenantId") || process.env.TENANT_ID;
@@ -51,6 +59,14 @@ const sharedInstance = gcp.sql.DatabaseInstance.get(
   sharedInstanceName
 );
 
+// ============================================
+// ESSENTIAL RESOURCES (Fast provisioning)
+// - Database (~5 sec)
+// - User (~5 sec)
+// - Storage Bucket (~10-15 sec)
+// Total: ~20-30 seconds
+// ============================================
+
 // Create a DATABASE for this tenant on the shared instance
 // This is fast - just creates a new database, not a new instance
 const database = new gcp.sql.Database(`${resourcePrefix}-db`, {
@@ -67,7 +83,7 @@ const dbUser = new gcp.sql.User(`${resourcePrefix}-user`, {
   password: dbPassword.result,
 });
 
-// Create Storage Bucket for tenant files (this is still per-tenant)
+// Create Storage Bucket for tenant files
 const storageBucket = new gcp.storage.Bucket(`${resourcePrefix}-storage`, {
   name: `${project}-${resourcePrefix}-${environment}`,
   location: region.toUpperCase(),
@@ -112,28 +128,11 @@ const storageBucket = new gcp.storage.Bucket(`${resourcePrefix}-storage`, {
   forceDestroy: environment !== "production",
 });
 
-// Create Service Account for the tenant
-const serviceAccount = new gcp.serviceaccount.Account(`${resourcePrefix}-sa`, {
-  accountId: `${resourcePrefix}`.substring(0, 28),
-  displayName: `Tenant ${tenantId} Service Account`,
-  description: `Service account for tenant ${tenantId} in ${environment} environment`,
-});
+// ============================================
+// Build database URLs
+// ============================================
 
-// Grant Storage permissions to the service account
-const storageBucketIamMember = new gcp.storage.BucketIAMMember(`${resourcePrefix}-storage-iam`, {
-  bucket: storageBucket.name,
-  role: "roles/storage.objectAdmin",
-  member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-});
-
-// Grant Cloud SQL Client role to the service account
-const sqlClientIamMember = new gcp.projects.IAMMember(`${resourcePrefix}-sql-client-iam`, {
-  project: project,
-  role: "roles/cloudsql.client",
-  member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-});
-
-// Build the database URL using shared instance
+// Build the database URL using shared instance (for Cloud SQL Proxy)
 const databaseUrl = pulumi.all([
   dbUser.name,
   dbPassword.result,
@@ -143,9 +142,10 @@ const databaseUrl = pulumi.all([
   return `postgresql://${user}:${encodedPassword}@localhost/${dbName}?host=/cloudsql/${sharedInstanceConnectionName}`;
 });
 
-// Build the direct connection URL
+// Build the direct connection URL (for local development)
+// Use configured IP if available, otherwise look it up from the instance
 const directDatabaseUrl = pulumi.all([
-  sharedInstance.publicIpAddress,
+  sharedInstanceIp ? pulumi.output(sharedInstanceIp) : sharedInstance.publicIpAddress,
   dbUser.name,
   dbPassword.result,
   database.name,
@@ -165,9 +165,14 @@ export const databaseUserName = dbUser.name;
 export const databasePassword = dbPassword.result;
 export const databaseUrlOutput = databaseUrl;
 export const directDatabaseUrlOutput = directDatabaseUrl;
+
+// Storage bucket (created per tenant)
 export const storageBucketName = storageBucket.name;
 export const storageBucketUrl = pulumi.interpolate`gs://${storageBucket.name}`;
-export const serviceAccountEmail = serviceAccount.email;
+
+// Service Account is NOT created for shared instance mode
+// Tenants use the shared instance's service account or workload identity
+export const serviceAccountEmail = pulumi.output("");
 
 // Export a summary object
 export const tenantResources = {
@@ -187,8 +192,5 @@ export const tenantResources = {
   storage: {
     bucketName: storageBucketName,
     bucketUrl: storageBucketUrl,
-  },
-  serviceAccount: {
-    email: serviceAccountEmail,
   },
 };

@@ -10,7 +10,8 @@
     "./crypto": "./src/crypto.ts",
     "./otp": "./src/otp.ts",
     "./supabase": "./src/supabase-management.ts",
-    "./pulumi": "./src/pulumi-provisioning.ts"
+    "./pulumi": "./src/pulumi-provisioning.ts",
+    "./sql": "./src/sql-provisioning.ts"
   },
   "dependencies": {
     "@tequity/types": "workspace:*",

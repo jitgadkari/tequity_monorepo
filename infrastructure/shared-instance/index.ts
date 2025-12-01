@@ -1,5 +1,6 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as gcp from "@pulumi/gcp";
+import * as random from "@pulumi/random";
 
 /**
  * Shared Cloud SQL Instance
@@ -106,17 +107,50 @@ const sharedSqlInstance = new gcp.sql.DatabaseInstance("shared-sql-instance", {
 
 // Create a postgres superuser for admin tasks
 // (Tenant users will have limited permissions)
-const adminPassword = new (require("@pulumi/random").RandomPassword)("admin-password", {
+const adminPassword = new random.RandomPassword("admin-password", {
   length: 32,
   special: true,
   overrideSpecial: "!#$%&*()-_=+[]{}<>:?",
 });
 
+// Create the admin user
+const adminUser = new gcp.sql.User("admin-user", {
+  name: "postgres",
+  instance: sharedSqlInstance.name,
+  password: adminPassword.result,
+});
+
+// Create the master database for admin/platform tasks
+const masterDatabase = new gcp.sql.Database("master-db", {
+  name: "master_db",
+  instance: sharedSqlInstance.name,
+  charset: "UTF8",
+  collation: "en_US.UTF8",
+});
+
 // Export outputs needed by tenant provisioner
-export const instanceName = sharedSqlInstance.name;
+export const sharedInstanceName = sharedSqlInstance.name;
 export const connectionName = sharedSqlInstance.connectionName;
 export const publicIpAddress = sharedSqlInstance.publicIpAddress;
 export const privateIpAddress = sharedSqlInstance.privateIpAddress;
+
+// Export admin credentials (sensitive - will be masked in Pulumi output)
+export const adminUsername = adminUser.name;
+export const adminPasswordOutput = pulumi.secret(adminPassword.result);
+
+// Build the master database URL
+export const masterDatabaseUrl = pulumi.all([
+  sharedSqlInstance.publicIpAddress,
+  adminUser.name,
+  adminPassword.result,
+  masterDatabase.name,
+]).apply(([ip, user, password, dbName]) => {
+  const encodedPassword = encodeURIComponent(password);
+  return `postgresql://${user}:${encodedPassword}@${ip}:5432/${dbName}?sslmode=disable`;
+});
+
+// Export as secret
+export const masterDatabaseUrlSecret = pulumi.secret(masterDatabaseUrl);
 
 // Instructions for tenant provisioner
 export const tenantProvisionerConfig = pulumi.interpolate`
@@ -124,13 +158,20 @@ Add these to your tenant provisioner Pulumi config:
 
   pulumi config set tequity:sharedSqlInstance ${sharedSqlInstance.name}
   pulumi config set tequity:sharedSqlConnectionName ${sharedSqlInstance.connectionName}
+  pulumi config set tequity:sharedSqlIp ${sharedSqlInstance.publicIpAddress}
 `;
 
-export const summary = {
-  instanceName: instanceName,
-  connectionName: connectionName,
-  publicIp: publicIpAddress,
+export const summary = pulumi.all([
+  sharedSqlInstance.name,
+  sharedSqlInstance.connectionName,
+  sharedSqlInstance.publicIpAddress,
+]).apply(([name, connName, ip]) => ({
+  instanceName: name,
+  connectionName: connName,
+  publicIp: ip,
   environment: environment,
   tier: databaseTier,
   maxConnections: environment === "production" ? 500 : 200,
-};
+  masterDatabase: "master_db",
+  adminUser: "postgres",
+}));

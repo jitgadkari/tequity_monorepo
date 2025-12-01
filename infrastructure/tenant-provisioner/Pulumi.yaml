@@ -1,3 +1,9 @@
 name: tequity-tenant-provisioner
-runtime: nodejs
+runtime:
+  name: nodejs
+  options:
+    # Use PULUMI_MAIN env var to switch between index.ts (dedicated) and index-shared.ts (shared)
+    # Default: index.ts (creates dedicated Cloud SQL instance per tenant)
+    # Shared mode: PULUMI_MAIN=index-shared (uses shared Cloud SQL instance)
+    typescript: true
 description: GCP infrastructure provisioning for Tequity tenants (Cloud SQL + Storage per tenant)

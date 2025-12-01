@@ -1,0 +1,8 @@
+# Ignore sensitive credentials
+.env.shared-instance
+
+# Node
+node_modules/
+
+# Pulumi
+*.log

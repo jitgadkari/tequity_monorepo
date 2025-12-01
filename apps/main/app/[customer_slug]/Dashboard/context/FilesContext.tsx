@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { authFetch } from "@/lib/client-auth";
+import { authFetch, ensureToken } from "@/lib/client-auth";
 
 export interface FileItem {
   id?: string;
@@ -51,6 +51,13 @@ export function FilesProvider({ children }: { children: ReactNode }) {
       if (storedDataroomId) {
         console.log('[FilesContext] Found dataroomId in localStorage:', storedDataroomId);
         setDataroomId(storedDataroomId);
+        return;
+      }
+
+      // Ensure we have a valid auth token (fetches from session if needed)
+      const token = await ensureToken();
+      if (!token) {
+        console.warn('[FilesContext] No auth token available, cannot fetch datarooms');
         return;
       }
 
