@@ -110,11 +110,27 @@ export function DashboardLayout({
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (res.ok) {
+        // Clear all localStorage items
+        localStorage.removeItem('tequity_auth_token');
+        localStorage.removeItem('tequity_user');
+        localStorage.removeItem('tequity_dataroom_id');
+        localStorage.removeItem('dataroomName');
+        localStorage.removeItem('starredFiles');
+        localStorage.removeItem('recentlyVisited');
+
         router.push('/signin');
         router.refresh();
       }
     } catch (error) {
       console.error('Logout failed:', error);
+      // Still clear localStorage even if API call fails
+      localStorage.removeItem('tequity_auth_token');
+      localStorage.removeItem('tequity_user');
+      localStorage.removeItem('tequity_dataroom_id');
+      localStorage.removeItem('dataroomName');
+      localStorage.removeItem('starredFiles');
+      localStorage.removeItem('recentlyVisited');
+
       router.push('/signin');
     }
   };

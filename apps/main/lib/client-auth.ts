@@ -71,12 +71,16 @@ export function getToken(): string | null {
 }
 
 /**
- * Remove auth token from localStorage
+ * Remove auth token and all session-related data from localStorage
  */
 export function removeToken(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    localStorage.removeItem('tequity_dataroom_id')
+    localStorage.removeItem('dataroomName')
+    localStorage.removeItem('starredFiles')
+    localStorage.removeItem('recentlyVisited')
   }
 }
 
