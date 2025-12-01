@@ -224,3 +224,49 @@ export function logout(): void {
     window.location.href = '/signin'
   }
 }
+
+/**
+ * Fetch JWT token from session
+ * This exchanges a valid session cookie for a JWT token for API calls
+ */
+export async function fetchTokenFromSession(): Promise<string | null> {
+  const tenantSlug = getTenantSlug()
+  if (!tenantSlug) return null
+
+  try {
+    const response = await fetch(`/api/${tenantSlug}/auth/token`, {
+      method: 'GET',
+      credentials: 'include', // Include cookies
+    })
+
+    if (!response.ok) {
+      console.error('[Auth] Failed to fetch token from session:', response.status)
+      return null
+    }
+
+    const data = await response.json()
+    if (data.success && data.token) {
+      setToken(data.token)
+      if (data.user) {
+        setUser(data.user)
+      }
+      return data.token
+    }
+
+    return null
+  } catch (error) {
+    console.error('[Auth] Error fetching token from session:', error)
+    return null
+  }
+}
+
+/**
+ * Ensure we have a valid token, fetching from session if needed
+ */
+export async function ensureToken(): Promise<string | null> {
+  const existing = getToken()
+  if (existing) return existing
+
+  // Try to get token from session
+  return fetchTokenFromSession()
+}

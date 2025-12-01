@@ -172,7 +172,12 @@ async function provisionPulumi(
   }
 
   // Encrypt credentials
-  const encryptedDbUrl = result.databaseUrl ? encrypt(result.databaseUrl) : null;
+  // For local development, use directDatabaseUrl (public IP) instead of databaseUrl (Cloud SQL Proxy)
+  // In production with GKE, you would use databaseUrl with Cloud SQL Proxy
+  const dbUrlToUse = process.env.NODE_ENV === 'production'
+    ? result.databaseUrl
+    : result.directDatabaseUrl || result.databaseUrl;
+  const encryptedDbUrl = dbUrlToUse ? encrypt(dbUrlToUse) : null;
   const encryptedServiceAccountKey = result.serviceAccountKeyJson
     ? encrypt(result.serviceAccountKeyJson)
     : null;
@@ -221,6 +226,7 @@ async function provisionPulumi(
     success: true,
     message: 'Tenant provisioned successfully (GCP via Pulumi)',
     tenantSlug,
+    databaseUrl: dbUrlToUse, // Pass the database URL for migrations
     resources: {
       cloudSqlInstance: result.cloudSqlInstanceName,
       storageBucket: result.storageBucketName,
@@ -230,17 +236,108 @@ async function provisionPulumi(
 }
 
 /**
+ * Enable pgvector extension and create embedding column
+ * This is required for vector similarity search on document embeddings
+ */
+async function enablePgVector(databaseUrl: string, tenantSlug: string) {
+  console.log(`[Provision] Enabling pgvector for tenant: ${tenantSlug}`);
+
+  const { PrismaClient } = await import('@prisma/tenant-client');
+  const prisma = new PrismaClient({
+    datasources: {
+      db: { url: databaseUrl },
+    },
+  });
+
+  try {
+    // Enable pgvector extension
+    await prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS vector`);
+    console.log(`[Provision] pgvector extension enabled`);
+
+    // Add embedding column to DocumentEmbedding table if it doesn't exist
+    // Using 1536 dimensions for OpenAI ada-002 embeddings
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "DocumentEmbedding"
+      ADD COLUMN IF NOT EXISTS embedding vector(1536)
+    `);
+    console.log(`[Provision] embedding column added to DocumentEmbedding`);
+
+    // Create index for cosine similarity search
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS document_embedding_vector_idx
+      ON "DocumentEmbedding"
+      USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100)
+    `);
+    console.log(`[Provision] Vector index created`);
+
+    await prisma.$disconnect();
+    console.log(`[Provision] pgvector setup completed for tenant: ${tenantSlug}`);
+    return true;
+  } catch (error) {
+    await prisma.$disconnect();
+    console.error(`[Provision] pgvector setup failed for tenant ${tenantSlug}:`, error);
+    // Don't throw - pgvector is optional, file uploads can still work without embeddings
+    console.warn(`[Provision] Continuing without pgvector - embeddings will be disabled`);
+    return false;
+  }
+}
+
+/**
+ * Run Prisma migrations on a new tenant database
+ * This creates all the required tables in the newly provisioned database
+ */
+async function runTenantMigrations(databaseUrl: string, tenantSlug: string) {
+  console.log(`[Provision] Running migrations for tenant: ${tenantSlug}`);
+
+  const { execSync } = await import('child_process');
+  const path = await import('path');
+
+  // Get the path to the tenant prisma schema
+  const schemaPath = path.resolve(process.cwd(), 'prisma/schema.prisma');
+
+  try {
+    // Run prisma db push to create tables (works better than migrate for new DBs)
+    // We use db push since we don't need migration history for fresh tenant DBs
+    execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
+      env: {
+        ...process.env,
+        DATABASE_URL: databaseUrl,
+      },
+      stdio: 'pipe',
+      timeout: 120000, // 2 minute timeout
+    });
+
+    console.log(`[Provision] Migrations completed successfully for tenant: ${tenantSlug}`);
+
+    // After schema is created, enable pgvector and create embedding column
+    await enablePgVector(databaseUrl, tenantSlug);
+
+    return true;
+  } catch (error) {
+    console.error(`[Provision] Migration failed for tenant ${tenantSlug}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Initialize tenant data after database is provisioned
  * Creates the owner User and their initial Dataroom in the tenant DB
  */
 async function initializeTenantData(
   masterDb: DbClient,
   tenant: TenantData,
-  tenantSlug: string
+  tenantSlug: string,
+  databaseUrl?: string
 ) {
   console.log(`[Provision] Initializing tenant data for: ${tenantSlug}`);
 
   try {
+    // Run migrations on the new database first (if we have the database URL)
+    if (databaseUrl) {
+      await runTenantMigrations(databaseUrl, tenantSlug);
+    }
+
     // Get tenant-specific database connection
     const { getTenantDb } = await import('@/lib/db');
     const tenantDb = await getTenantDb(tenantSlug);
@@ -430,7 +527,9 @@ export async function POST(request: Request) {
       // After successful provisioning, initialize tenant data in tenant DB
       // Skip for mock mode since there's no separate tenant database
       if (provider !== 'mock') {
-        await initializeTenantData(db, tenant, tenant.slug || tenantId);
+        // Pass the database URL for running migrations on the new database
+        const databaseUrl = result.databaseUrl as string | undefined;
+        await initializeTenantData(db, tenant, tenant.slug || tenantId, databaseUrl);
       } else {
         console.log(`[Mock] Skipping tenant data initialization - mock mode uses master DB`);
       }

@@ -50,7 +50,7 @@ export default function PricingPage() {
         }
 
         toast.success("Plan activated! Setting up your workspace...");
-        router.push(data.redirectUrl || "/workspaces");
+        window.location.href = data.redirectUrl || "/workspaces";
       } else if (planId === "enterprise") {
         // For enterprise, redirect to contact
         window.location.href =

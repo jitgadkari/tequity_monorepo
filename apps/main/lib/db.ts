@@ -105,10 +105,11 @@ export async function getTenantDb(tenantSlug: string): Promise<PrismaClient> {
  * Does not check database - just format validation
  */
 export function isValidTenantSlug(slug: string): boolean {
-  // Slug must be lowercase alphanumeric with hyphens
+  // Slug must be lowercase alphanumeric with hyphens and underscores
   // Between 2-50 characters
-  const slugRegex = /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/
-  return slugRegex.test(slug) || (slug.length >= 2 && /^[a-z0-9]+$/.test(slug))
+  // The nanoid suffix in generateSlug can include underscores
+  const slugRegex = /^[a-z0-9][a-z0-9_-]{0,48}[a-z0-9]$/
+  return slugRegex.test(slug) || (slug.length >= 2 && /^[a-z0-9_]+$/.test(slug))
 }
 
 /**

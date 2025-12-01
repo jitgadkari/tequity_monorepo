@@ -60,8 +60,17 @@ const cloudSqlInstance = new gcp.sql.DatabaseInstance(`${resourcePrefix}-sql`, {
 
     ipConfiguration: {
       ipv4Enabled: true,
-      requireSsl: true,
-      authorizedNetworks: [], // Will be configured for VPC access in production
+      // In development, disable SSL requirement so we can connect without client certs
+      // In production, require SSL for secure connections via Cloud SQL Proxy
+      requireSsl: environment === "production",
+      // In development, allow connections from anywhere (0.0.0.0/0)
+      // In production, this should be restricted to VPC or specific IPs
+      authorizedNetworks: environment !== "production" ? [
+        {
+          name: "allow-all-dev",
+          value: "0.0.0.0/0",
+        },
+      ] : [], // Production uses VPC access via Cloud SQL Proxy
     },
 
     maintenanceWindow: {
@@ -200,6 +209,8 @@ const databaseUrl = pulumi.all([
 });
 
 // Build the direct connection URL (for Cloud SQL Proxy or direct IP)
+// In development, use sslmode=disable since requireSsl is false
+// In production, use sslmode=require for secure connections
 const directDatabaseUrl = pulumi.all([
   cloudSqlInstance.publicIpAddress,
   dbUser.name,
@@ -207,7 +218,8 @@ const directDatabaseUrl = pulumi.all([
   database.name,
 ]).apply(([ipAddress, user, password, dbName]: [string, string, string, string]) => {
   const encodedPassword = encodeURIComponent(password);
-  return `postgresql://${user}:${encodedPassword}@${ipAddress}:5432/${dbName}?sslmode=require`;
+  const sslMode = environment === "production" ? "require" : "disable";
+  return `postgresql://${user}:${encodedPassword}@${ipAddress}:5432/${dbName}?sslmode=${sslMode}`;
 });
 
 // Export outputs

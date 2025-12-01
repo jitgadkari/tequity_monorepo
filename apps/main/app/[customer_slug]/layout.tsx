@@ -33,7 +33,7 @@ export default async function TenantLayout({ children, params }: TenantLayoutPro
     // Tenant is not active (provisioning, suspended, etc.)
     if (tenant.status === 'PROVISIONING') {
       // Show provisioning page with auto-refresh
-      return <ProvisioningPage tenantId={tenant.id} />;
+      return <ProvisioningPage tenantId={tenant.id} workspaceName={tenant.workspaceName || undefined} />;
     }
 
     // For other non-active states, show error

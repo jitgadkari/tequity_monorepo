@@ -16,7 +16,7 @@ import { X, CheckCircle, RefreshCw, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { UploadGraphic } from "./UploadGraphic";
 import { toast } from "sonner";
-import { getToken, getTenantSlug, authFetch } from "@/lib/client-auth";
+import { getToken, getTenantSlug, authFetch, ensureToken } from "@/lib/client-auth";
 
 // File type icons - using public folder paths
 const fileIcons: Record<string, string> = {
@@ -237,9 +237,16 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
     setUploadProgress((prev) => ({ ...prev, ...initialProgress }));
     setIsUploading(true);
 
-    const token = getToken();
+    // Ensure we have a valid token (fetch from session if needed)
+    const token = await ensureToken();
     const tenantSlug = getTenantSlug();
     console.log("[UploadDialog] token exists:", !!token, "tenantSlug:", tenantSlug);
+
+    if (!token) {
+      toast.error("Authentication error. Please refresh the page and try again.");
+      setIsUploading(false);
+      return;
+    }
 
     for (let i = 0; i < filesToUpload.length; i++) {
       const actualIndex = startIndex + i;

@@ -45,6 +45,12 @@ export default function WorkspaceSetupPage() {
           throw new Error("Dataroom name contains invalid characters");
         }
 
+        // Prevent email addresses from being used as workspace names
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailPattern.test(workspaceName.trim())) {
+          throw new Error("Please enter a dataroom name, not an email address");
+        }
+
         // Save to API
         const res = await fetch("/api/platform/onboarding/company", {
           method: "POST",

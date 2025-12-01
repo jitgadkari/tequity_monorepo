@@ -1,9 +1,0 @@
-config:
-  gcp:project: tequity-ajit
-  gcp:region: us-central1
-  tequity:tenantId: c5e14847-2d98-4aac-9108-3b629df30296
-  tequity:environment: development
-  tequity:databaseTier: db-f1-micro
-  tequity:enableBackups: "false"
-  tequity:deletionProtection: "false"
-  tequity:skipServiceAccountKey: "true"

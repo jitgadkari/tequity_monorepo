@@ -97,25 +97,27 @@ export async function POST() {
 
     console.log('[CHECKOUT/FREE] Session updated with tenantSlug');
 
-    // Queue tenant provisioning (async)
-    // In production, this would trigger async provisioning via a job queue
-    console.log('[CHECKOUT/FREE] Triggering provisioning...');
-    const provisionRes = await fetch(
+    // Trigger tenant provisioning (fire-and-forget)
+    // Don't await - let provisioning run in background while user sees provisioning page
+    console.log('[CHECKOUT/FREE] Triggering provisioning (fire-and-forget)...');
+    fetch(
       `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/platform/provision`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenantId: tenant.id }),
       }
-    );
+    ).then(res => {
+      if (!res.ok) {
+        console.error('[CHECKOUT/FREE] Background provisioning request failed');
+      } else {
+        console.log('[CHECKOUT/FREE] Background provisioning request sent');
+      }
+    }).catch(err => {
+      console.error('[CHECKOUT/FREE] Background provisioning error:', err);
+    });
 
-    if (!provisionRes.ok) {
-      console.error('[CHECKOUT/FREE] Provisioning failed but continuing');
-    } else {
-      const provisionData = await provisionRes.json();
-      console.log('[CHECKOUT/FREE] Provisioning result:', provisionData);
-    }
-
+    // Return immediately - user will see provisioning page with spinner
     return NextResponse.json({
       success: true,
       redirectUrl: `/${tenant.slug}/Dashboard/Library`,
