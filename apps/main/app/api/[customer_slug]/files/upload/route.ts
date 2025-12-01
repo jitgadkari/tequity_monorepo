@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-import { getTenantDb, isValidTenantSlug, prisma } from '@/lib/db'
+import { getTenantDb, isValidTenantSlug } from '@/lib/db'
 import { verifyAuthWithTenant } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 import { processFileForRAG, getFileTypeFromExtension } from '@/lib/file-processing'
 import { embedRecords, upsertEmbeddings, type EmbeddingRecord, type VectorRecord } from '@/lib/ai'
+import type { PrismaClient } from '@prisma/tenant-client'
 
 // Upload directory configuration
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads'
@@ -138,7 +139,8 @@ export async function POST(
     // Process file for RAG in background (if enabled)
     if (processForRAG) {
       // Start async processing - don't wait for it
-      processFileAsync(fileRecord.id, buffer, file.name).catch((error) => {
+      // Pass the tenant prisma client to ensure correct database is used
+      processFileAsync(prisma, fileRecord.id, buffer, file.name).catch((error) => {
         console.error(`[Upload] Async processing failed for ${fileRecord.id}:`, error)
       })
     }
@@ -170,8 +172,9 @@ export async function POST(
 /**
  * Process file for RAG asynchronously
  * Extracts text, generates embeddings, and stores in vector database
+ * @param prisma - Tenant-specific Prisma client (must be passed to ensure correct DB)
  */
-async function processFileAsync(fileId: string, buffer: Buffer, filename: string) {
+async function processFileAsync(prisma: PrismaClient, fileId: string, buffer: Buffer, filename: string) {
   console.log(`[Upload] Starting async processing for ${fileId}`)
 
   try {
@@ -232,7 +235,7 @@ async function processFileAsync(fileId: string, buffer: Buffer, filename: string
 
       if (vectorRecords.length > 0) {
         console.log(`[Upload] Upserting ${vectorRecords.length} embeddings to vector store...`)
-        await upsertEmbeddings(vectorRecords, fileId)
+        await upsertEmbeddings(prisma, vectorRecords, fileId)
       }
 
       // Also create Prisma records for reference (without embedding column for now)

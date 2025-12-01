@@ -1,0 +1,3 @@
+name: tequity-shared-instance
+runtime: nodejs
+description: Shared Cloud SQL instance for all Tequity tenants

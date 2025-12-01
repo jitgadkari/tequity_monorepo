@@ -123,7 +123,7 @@ export async function POST(
               })
             }
 
-            const generator = processQueryStream(question, {
+            const generator = processQueryStream(prisma, question, {
               dataroomId,
               fileIds,
               topK: 10,
@@ -211,7 +211,7 @@ export async function POST(
       })
     }
 
-    const response = await processQuery(question, {
+    const response = await processQuery(prisma, question, {
       dataroomId,
       fileIds,
       topK: 10,

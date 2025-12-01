@@ -5,6 +5,7 @@
  */
 
 import OpenAI from 'openai'
+import type { PrismaClient } from '@prisma/tenant-client'
 import { getQueryEmbedding } from './embeddings'
 import { searchMultiFile, searchByFiles, SearchResult } from './vector-store'
 import {
@@ -15,6 +16,9 @@ import {
   CATEGORY_KEYWORDS,
   FINANCIAL_ASSISTANT_SYSTEM_PROMPT,
 } from './prompts'
+
+// Type alias for tenant prisma client
+type TenantPrismaClient = PrismaClient
 
 const OPENAI_LLM_MODEL = process.env.OPENAI_LLM_MODEL || 'gpt-4o'
 
@@ -225,8 +229,10 @@ export async function generateAnswer(query: string, contextChunks: string[]): Pr
 /**
  * Main RAG pipeline - process a query and return an answer with sources
  * Matches Python: process_optimized_query()
+ * @param prisma - Tenant-specific Prisma client for vector store operations
  */
 export async function processQuery(
+  prisma: TenantPrismaClient,
   query: string,
   options: {
     dataroomId?: string
@@ -255,10 +261,10 @@ export async function processQuery(
 
     if (options.fileIds && options.fileIds.length > 0) {
       // Search in specific files
-      searchResults = await searchByFiles(embedding, options.fileIds, { topK })
+      searchResults = await searchByFiles(prisma, embedding, options.fileIds, { topK })
     } else {
       // Multi-file search with category prioritization
-      searchResults = await searchMultiFile(embedding, classification.category, { topK })
+      searchResults = await searchMultiFile(prisma, embedding, classification.category, { topK })
     }
 
     console.log(`[RAG] Found ${searchResults.length} relevant chunks`)
@@ -297,8 +303,10 @@ export async function processQuery(
 
 /**
  * Streaming version of processQuery for real-time responses
+ * @param prisma - Tenant-specific Prisma client for vector store operations
  */
 export async function* processQueryStream(
+  prisma: TenantPrismaClient,
   query: string,
   options: {
     dataroomId?: string
@@ -321,9 +329,9 @@ export async function* processQueryStream(
     // Search for context
     let searchResults: SearchResult[]
     if (options.fileIds && options.fileIds.length > 0) {
-      searchResults = await searchByFiles(embedding, options.fileIds, { topK })
+      searchResults = await searchByFiles(prisma, embedding, options.fileIds, { topK })
     } else {
-      searchResults = await searchMultiFile(embedding, classification.category, { topK })
+      searchResults = await searchMultiFile(prisma, embedding, classification.category, { topK })
     }
 
     yield { type: 'status', data: `Found ${searchResults.length} relevant chunks. Generating answer...` }

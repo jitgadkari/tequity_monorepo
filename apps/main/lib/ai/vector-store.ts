@@ -9,8 +9,8 @@ import { PrismaClient, Prisma } from '@prisma/tenant-client'
 const VECTOR_SIZE = 1536 // OpenAI ada-002 embedding dimension
 const DEFAULT_TABLE = 'DocumentEmbedding'
 
-// Use a separate Prisma client for raw queries
-const prisma = new PrismaClient()
+// Type alias for tenant prisma client
+type TenantPrismaClient = PrismaClient
 
 export interface VectorRecord {
   pointId: string
@@ -44,8 +44,9 @@ export interface SearchResult {
 /**
  * Initialize pgvector extension and ensure table has vector column
  * Should be run once during setup
+ * @param prisma - Tenant-specific Prisma client
  */
-export async function initVectorStore(): Promise<void> {
+export async function initVectorStore(prisma: TenantPrismaClient): Promise<void> {
   console.log('[VectorStore] Initializing pgvector...')
 
   try {
@@ -87,8 +88,10 @@ export async function initVectorStore(): Promise<void> {
 /**
  * Upsert embeddings into the DocumentEmbedding table
  * Matches Python: upsert_embeddings()
+ * @param prisma - Tenant-specific Prisma client
  */
 export async function upsertEmbeddings(
+  prisma: TenantPrismaClient,
   records: VectorRecord[],
   fileId: string
 ): Promise<number> {
@@ -170,8 +173,10 @@ export async function upsertEmbeddings(
 /**
  * Search for similar embeddings using cosine similarity
  * Matches Python: search_similar()
+ * @param prisma - Tenant-specific Prisma client
  */
 export async function searchSimilar(
+  prisma: TenantPrismaClient,
   queryEmbedding: number[],
   options: {
     limit?: number
@@ -255,8 +260,10 @@ export async function searchSimilar(
 /**
  * Multi-file search with category prioritization
  * Matches Python: search_pgvector() with multi_file_search
+ * @param prisma - Tenant-specific Prisma client
  */
 export async function searchMultiFile(
+  prisma: TenantPrismaClient,
   queryEmbedding: number[],
   category: string,
   options: {
@@ -376,8 +383,10 @@ export async function searchMultiFile(
 /**
  * Search within specific files only
  * Matches Python: search_pgvector_by_files()
+ * @param prisma - Tenant-specific Prisma client
  */
 export async function searchByFiles(
+  prisma: TenantPrismaClient,
   queryEmbedding: number[],
   fileIds: string[],
   options: {
@@ -454,8 +463,9 @@ export async function searchByFiles(
 
 /**
  * Delete embeddings by file ID
+ * @param prisma - Tenant-specific Prisma client
  */
-export async function deleteByFileId(fileId: string): Promise<number> {
+export async function deleteByFileId(prisma: TenantPrismaClient, fileId: string): Promise<number> {
   console.log(`[VectorStore] Deleting embeddings for file ${fileId}`)
 
   const result = await prisma.documentEmbedding.deleteMany({
@@ -469,8 +479,9 @@ export async function deleteByFileId(fileId: string): Promise<number> {
 /**
  * Delete embeddings by source file name
  * Matches Python: delete_by_source()
+ * @param prisma - Tenant-specific Prisma client
  */
-export async function deleteBySource(sourceFile: string): Promise<number> {
+export async function deleteBySource(prisma: TenantPrismaClient, sourceFile: string): Promise<number> {
   console.log(`[VectorStore] Deleting embeddings for source: ${sourceFile}`)
 
   const result = await prisma.$executeRaw`
@@ -484,8 +495,9 @@ export async function deleteBySource(sourceFile: string): Promise<number> {
 
 /**
  * Get embedding count for a file
+ * @param prisma - Tenant-specific Prisma client
  */
-export async function getEmbeddingCount(fileId: string): Promise<number> {
+export async function getEmbeddingCount(prisma: TenantPrismaClient, fileId: string): Promise<number> {
   const count = await prisma.documentEmbedding.count({
     where: { fileId },
   })
