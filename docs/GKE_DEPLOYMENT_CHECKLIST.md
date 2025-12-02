@@ -452,35 +452,145 @@ kubectl logs -f deployment/admin-app -n tequity-staging
 
 ## Phase 6: DNS & Ingress
 
-### 6.1 Reserve Static IP (Optional but recommended)
+### 6.1 Reserve Static IPs
 ```bash
-# Reserve a global static IP for the ingress
-gcloud compute addresses create tequity-ip --global
+# Reserve a global static IP for STAGING
+gcloud compute addresses create tequity-staging-ip --global
 
-# Get the IP address
-gcloud compute addresses describe tequity-ip --global --format='value(address)'
+# Get the staging IP address
+gcloud compute addresses describe tequity-staging-ip --global --format='value(address)'
+# Example output: 34.160.168.54
+
+# Reserve a global static IP for PRODUCTION
+gcloud compute addresses create tequity-production-ip --global
+
+# Get the production IP address
+gcloud compute addresses describe tequity-production-ip --global --format='value(address)'
+
+# List all reserved IPs
+gcloud compute addresses list --global
 ```
+- [x] Staging static IP: `tequity-staging-ip` (34.160.168.54)
+- [ ] Production static IP: `tequity-production-ip`
 
-### 6.2 Get External IP (from Ingress)
+### 6.2 Verify Ingress Configuration
+The ingress is configured in `k8s/base/ingress.yaml` and uses environment-specific patches.
+
 ```bash
+# Check staging ingress (should show staging domains and IP)
 kubectl get ingress -n tequity-staging
+
+# Watch for IP assignment (may take 5-10 minutes after deployment)
+kubectl get ingress -n tequity-staging -w
+
+# Check ingress details and events
+kubectl describe ingress tequity-ingress -n tequity-staging
+
+# Check production ingress
 kubectl get ingress -n tequity
 ```
 
-### 6.3 Configure DNS Records (ajitgadkari.com)
-| Subdomain | Type | Environment | Value |
-|-----------|------|-------------|-------|
-| `staging` | A | Staging main app | (staging ingress IP) |
-| `admin-staging` | A | Staging admin | (staging ingress IP) |
-| `app` | A | Production main app | (production ingress IP) |
-| `admin` | A | Production admin | (production ingress IP) |
+**Expected Output (Staging):**
+```
+NAME              CLASS    HOSTS                                                   ADDRESS         PORTS   AGE
+tequity-ingress   <none>   staging.ajitgadkari.com,admin-staging.ajitgadkari.com   34.160.168.54   80      5m
+```
+
+### 6.3 Troubleshoot Ingress Issues
+
+#### If Ingress has no ADDRESS:
+```bash
+# Check ingress events for errors
+kubectl describe ingress tequity-ingress -n tequity-staging | grep -A10 Events
+
+# Common error: "static IP name doesn't translate to an existing static IP"
+# Solution: Ensure the static IP name in ingress matches the reserved IP name
+
+# Delete and recreate ingress if needed
+kubectl delete ingress tequity-ingress -n tequity-staging
+
+# Re-run CI/CD to recreate, or apply manually:
+kubectl apply -k k8s/overlays/staging
+```
+
+#### If Ingress references wrong static IP name:
+The ingress annotation must match the reserved IP name:
+- Staging: `kubernetes.io/ingress.global-static-ip-name: "tequity-staging-ip"`
+- Production: `kubernetes.io/ingress.global-static-ip-name: "tequity-production-ip"`
+
+### 6.4 Configure DNS Records
+
+Once the ingress has an IP address assigned, configure DNS at your domain registrar.
+
+**Required DNS Records for ajitgadkari.com:**
+
+| Type | Name | Value | TTL | Environment |
+|------|------|-------|-----|-------------|
+| A | staging | 34.160.168.54 | 300 | Staging |
+| A | admin-staging | 34.160.168.54 | 300 | Staging |
+| A | app | (production IP) | 300 | Production |
+| A | admin | (production IP) | 300 | Production |
 
 **Full URLs:**
 - Staging: `https://staging.ajitgadkari.com`, `https://admin-staging.ajitgadkari.com`
 - Production: `https://app.ajitgadkari.com`, `https://admin.ajitgadkari.com`
 
-- [ ] DNS records configured
-- [ ] SSL certificates provisioned (managed by GKE)
+### 6.5 Verify DNS Propagation
+```bash
+# Check DNS propagation (may take 5-30 minutes)
+nslookup staging.ajitgadkari.com
+nslookup admin-staging.ajitgadkari.com
+
+# Or use dig
+dig staging.ajitgadkari.com +short
+dig admin-staging.ajitgadkari.com +short
+
+# Test HTTP access (once DNS propagates)
+curl -I http://staging.ajitgadkari.com
+curl -I http://admin-staging.ajitgadkari.com
+```
+
+### 6.6 SSL Certificate Provisioning
+
+GKE uses **Google-managed SSL certificates** which automatically provision after DNS is configured.
+
+```bash
+# Check managed certificate status
+kubectl get managedcertificates -n tequity-staging
+
+# Detailed certificate status
+kubectl describe managedcertificate tequity-cert -n tequity-staging
+```
+
+**Certificate Status Values:**
+- `Provisioning` - Google is verifying domain ownership (requires DNS to be configured)
+- `Active` - Certificate is ready and HTTPS is working
+- `ProvisioningFailed` - DNS verification failed (check DNS records)
+
+**Note:** SSL certificate provisioning takes 10-60 minutes after DNS is properly configured.
+
+### 6.7 Test HTTPS Access
+```bash
+# Once certificate is Active:
+curl -I https://staging.ajitgadkari.com
+curl -I https://admin-staging.ajitgadkari.com
+
+# Or open in browser:
+# https://staging.ajitgadkari.com
+# https://admin-staging.ajitgadkari.com
+```
+
+### DNS & Ingress Checklist
+- [x] Staging static IP reserved (`tequity-staging-ip`: 34.160.168.54)
+- [ ] Production static IP reserved (`tequity-production-ip`)
+- [x] Staging ingress has IP assigned
+- [ ] Production ingress has IP assigned
+- [ ] DNS A record for `staging` -> 34.160.168.54
+- [ ] DNS A record for `admin-staging` -> 34.160.168.54
+- [ ] DNS A record for `app` -> (production IP)
+- [ ] DNS A record for `admin` -> (production IP)
+- [ ] Staging SSL certificate Active
+- [ ] Production SSL certificate Active
 
 ---
 
@@ -500,6 +610,8 @@ kubectl get ingress -n tequity
 | Compute SA | `926649956950-compute@developer.gserviceaccount.com` |
 | Staging Namespace | `tequity-staging` |
 | Production Namespace | `tequity` |
+| Staging Static IP | `tequity-staging-ip` (34.160.168.54) |
+| Production Static IP | `tequity-production-ip` (TBD) |
 
 ---
 
@@ -621,9 +733,12 @@ kubectl create secret generic app-secrets -n tequity-staging \
 - [x] Verify staging deployment (pods running)
 
 ### Phase 6: DNS & Ingress
-- [ ] Reserve static IP
-- [ ] Configure DNS records
-- [ ] SSL certificates provisioned
+- [x] Reserve staging static IP (`tequity-staging-ip`: 34.160.168.54)
+- [ ] Reserve production static IP (`tequity-production-ip`)
+- [x] Staging ingress has IP assigned
+- [ ] Production ingress has IP assigned
+- [ ] Configure DNS A records at domain registrar
+- [ ] SSL certificates provisioned (auto after DNS)
 
 ---
 
