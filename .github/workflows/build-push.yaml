@@ -2,7 +2,11 @@ name: Build and Push
 
 on:
   push:
-    branches: [main]
+    branches:
+      - develop      # Staging deployments
+      - main         # Also trigger on main for production prep
+    tags:
+      - 'v*'         # Production deployments on version tags (v1.0.0, v1.2.3, etc.)
   workflow_dispatch:
     inputs:
       environment:
@@ -32,6 +36,8 @@ jobs:
       main_image: ${{ steps.meta-main.outputs.tags }}
       admin_image: ${{ steps.meta-admin.outputs.tags }}
       sha_short: ${{ steps.vars.outputs.sha_short }}
+      environment: ${{ steps.vars.outputs.environment }}
+      version: ${{ steps.vars.outputs.version }}
 
     steps:
       - name: Checkout
@@ -39,14 +45,35 @@ jobs:
 
       - name: Set variables
         id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+          # Determine environment based on trigger
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "version=${{ github.sha }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "version=staging-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Print build info
+        run: |
+          echo "🚀 Building for environment: ${{ steps.vars.outputs.environment }}"
+          echo "📦 Version: ${{ steps.vars.outputs.version }}"
+          echo "🔗 Ref: ${{ github.ref }}"
 
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -66,7 +93,10 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/main-app
           tags: |
             type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/develop' }}
 
       - name: Docker meta for admin-app
         id: meta-admin
@@ -75,7 +105,10 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/admin-app
           tags: |
             type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/develop' }}
 
       - name: Build and push main-app
         uses: docker/build-push-action@v5
@@ -89,7 +122,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             BUILDTIME=${{ github.event.head_commit.timestamp }}
-            VERSION=${{ steps.vars.outputs.sha_short }}
+            VERSION=${{ steps.vars.outputs.version }}
 
       - name: Build and push admin-app
         uses: docker/build-push-action@v5
@@ -103,7 +136,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             BUILDTIME=${{ github.event.head_commit.timestamp }}
-            VERSION=${{ steps.vars.outputs.sha_short }}
+            VERSION=${{ steps.vars.outputs.version }}
 
       - name: Output image URLs
         run: |
@@ -120,4 +153,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: deploy
-          client-payload: '{"sha": "${{ needs.build-and-push.outputs.sha_short }}", "environment": "${{ github.event.inputs.environment || ''staging'' }}"}'
+          client-payload: '{"sha": "${{ needs.build-and-push.outputs.sha_short }}", "environment": "${{ needs.build-and-push.outputs.environment }}", "version": "${{ needs.build-and-push.outputs.version }}"}'
