@@ -45,6 +45,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/main/.next/static ./apps/mai
 # The generated Prisma clients are at @prisma/master-client and @prisma/tenant-client
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+# Copy Pulumi packages (marked as external in next.config.ts)
+# These have native dependencies and can't be bundled by webpack
+COPY --from=builder /app/node_modules/@pulumi ./node_modules/@pulumi
+COPY --from=builder /app/node_modules/@grpc ./node_modules/@grpc
+COPY --from=builder /app/node_modules/google-protobuf ./node_modules/google-protobuf
+COPY --from=builder /app/node_modules/protobufjs ./node_modules/protobufjs
+
 USER nextjs
 
 EXPOSE 3000
