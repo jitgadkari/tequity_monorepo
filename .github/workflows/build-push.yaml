@@ -147,6 +147,8 @@ jobs:
     name: Trigger Deploy
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Trigger deployment workflow
         uses: peter-evans/repository-dispatch@v2
