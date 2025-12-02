@@ -8,10 +8,16 @@ import OpenAI from 'openai'
 import { FINANCIAL_CATEGORIES, FinancialCategory, SheetInfo } from './types'
 import { getExcelContentPreview } from './excel-extractor'
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialization to avoid build-time errors when env vars aren't set
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return _openai
+}
 
 const OPENAI_LLM_MODEL = process.env.OPENAI_LLM_MODEL || 'gpt-4o'
 
@@ -91,7 +97,7 @@ Examples:
 
 Category:`
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: OPENAI_LLM_MODEL,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 50,
@@ -266,7 +272,7 @@ ${sampleContent}
 
 Description:`
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 150,
