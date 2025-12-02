@@ -19,9 +19,15 @@ export async function setSession(payload: SessionPayload): Promise<void> {
   const token = await createSessionToken(payload);
   const cookieStore = await cookies();
 
+  // In production, secure cookies require HTTPS
+  // Allow non-secure cookies in staging until SSL is provisioned
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isStaging = process.env.NEXT_PUBLIC_APP_URL?.includes('staging');
+  const useSecureCookies = isProduction && !isStaging;
+
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: useSecureCookies,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
