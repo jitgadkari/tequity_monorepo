@@ -23,7 +23,15 @@ export async function POST(request: NextRequest) {
 
     console.log('[Admin] Initializing vector store...')
 
-    await initVectorStore()
+    // Import and create prisma client for tenant database
+    const { PrismaClient } = await import('@prisma/tenant-client')
+    const prisma = new PrismaClient()
+
+    try {
+      await initVectorStore(prisma)
+    } finally {
+      await prisma.$disconnect()
+    }
 
     return NextResponse.json({
       success: true,
