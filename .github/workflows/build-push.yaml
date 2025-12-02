@@ -23,6 +23,8 @@ env:
   REGION: us-central1
   REGISTRY: us-central1-docker.pkg.dev
   REPOSITORY: tequity
+  GKE_CLUSTER: tequity-cluster-1
+  GKE_ZONE: us-central1
 
 jobs:
   build-and-push:
@@ -143,16 +145,111 @@ jobs:
           echo "Main app image: ${{ steps.meta-main.outputs.tags }}"
           echo "Admin app image: ${{ steps.meta-admin.outputs.tags }}"
 
-  trigger-deploy:
-    name: Trigger Deploy
+  deploy-staging:
+    name: Deploy to Staging
     needs: build-and-push
+    if: needs.build-and-push.outputs.environment == 'staging'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    environment: staging
+
     steps:
-      - name: Trigger deployment workflow
-        uses: peter-evans/repository-dispatch@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print deployment info
+        run: |
+          echo "🚀 Deploying to STAGING"
+          echo "📦 Version: ${{ needs.build-and-push.outputs.version }}"
+          echo "🏷️ Image tag: ${{ needs.build-and-push.outputs.sha_short }}"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: deploy
-          client-payload: '{"sha": "${{ needs.build-and-push.outputs.sha_short }}", "environment": "${{ needs.build-and-push.outputs.environment }}", "version": "${{ needs.build-and-push.outputs.version }}"}'
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update Kustomize images
+        working-directory: k8s/overlays/staging
+        run: |
+          kustomize edit set image \
+            main-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/main-app:${{ needs.build-and-push.outputs.sha_short }} \
+            admin-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/admin-app:${{ needs.build-and-push.outputs.sha_short }}
+
+      - name: Deploy to staging
+        run: |
+          kubectl apply -k k8s/overlays/staging
+          kubectl rollout status deployment/main-app -n tequity-staging --timeout=300s
+          kubectl rollout status deployment/admin-app -n tequity-staging --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          echo "📋 Pods:"
+          kubectl get pods -n tequity-staging
+          echo ""
+          echo "🌐 Services:"
+          kubectl get services -n tequity-staging
+
+  deploy-production:
+    name: Deploy to Production
+    needs: build-and-push
+    if: needs.build-and-push.outputs.environment == 'production'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print deployment info
+        run: |
+          echo "🚀 Deploying to PRODUCTION"
+          echo "📦 Version: ${{ needs.build-and-push.outputs.version }}"
+          echo "🏷️ Image tag: ${{ needs.build-and-push.outputs.sha_short }}"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update Kustomize images
+        working-directory: k8s/overlays/production
+        run: |
+          kustomize edit set image \
+            main-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/main-app:${{ needs.build-and-push.outputs.sha_short }} \
+            admin-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/admin-app:${{ needs.build-and-push.outputs.sha_short }}
+
+      - name: Deploy to production
+        run: |
+          kubectl apply -k k8s/overlays/production
+          kubectl rollout status deployment/main-app -n tequity --timeout=300s
+          kubectl rollout status deployment/admin-app -n tequity --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          echo "📋 Pods:"
+          kubectl get pods -n tequity
+          echo ""
+          echo "🌐 Services:"
+          kubectl get services -n tequity
+          echo ""
+          echo "🔗 Ingress:"
+          kubectl get ingress -n tequity
