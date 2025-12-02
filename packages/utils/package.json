@@ -13,6 +13,9 @@
     "./pulumi": "./src/pulumi-provisioning.ts",
     "./sql": "./src/sql-provisioning.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@tequity/types": "workspace:*",
     "@pulumi/pulumi": "^3.100.0",

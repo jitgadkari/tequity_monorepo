@@ -22,9 +22,16 @@ type TenantPrismaClient = PrismaClient
 
 const OPENAI_LLM_MODEL = process.env.OPENAI_LLM_MODEL || 'gpt-4o'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialization to avoid build-time errors when env vars aren't set
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return _openai
+}
 
 export interface RAGResponse {
   answer: string
@@ -57,7 +64,7 @@ export async function identifyCategory(query: string): Promise<string> {
   try {
     const prompt = getFinancialCategoryPrompt(query)
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: OPENAI_LLM_MODEL,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 30,
@@ -134,7 +141,7 @@ export async function decomposeQuery(query: string, complexity: number): Promise
   try {
     const prompt = getDecompositionPrompt(query)
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: OPENAI_LLM_MODEL,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 200,
@@ -208,7 +215,7 @@ export async function generateAnswer(query: string, contextChunks: string[]): Pr
   try {
     const prompt = getBasicQAPrompt(context, query)
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: OPENAI_LLM_MODEL,
       messages: [
         { role: 'system', content: FINANCIAL_ASSISTANT_SYSTEM_PROMPT },
@@ -360,7 +367,7 @@ export async function* processQueryStream(
       const prompt = getBasicQAPrompt(context, query)
       console.log('[RAG Stream] Prompt length:', prompt.length)
 
-      const stream = await openai.chat.completions.create({
+      const stream = await getOpenAI().chat.completions.create({
         model: OPENAI_LLM_MODEL,
         messages: [
           { role: 'system', content: FINANCIAL_ASSISTANT_SYSTEM_PROMPT },

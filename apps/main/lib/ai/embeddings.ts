@@ -11,10 +11,16 @@ const MAX_BATCH_SIZE = 2048
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002'
 const EMBEDDING_DIMENSIONS = 1536 // ada-002 dimension
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialization to avoid build-time errors when env vars aren't set
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return _openai
+}
 
 export interface EmbeddingRecord {
   pointId: string
@@ -31,7 +37,7 @@ export interface EmbeddingRecord {
  * Get embedding for a single text (kept for backward compatibility)
  */
 export async function getEmbedding(text: string, model: string = EMBEDDING_MODEL): Promise<number[]> {
-  const response = await openai.embeddings.create({
+  const response = await getOpenAI().embeddings.create({
     input: [text],
     model,
   })
@@ -83,7 +89,7 @@ export async function embedRecords(records: EmbeddingRecord[]): Promise<Embeddin
 
     try {
       // Make single API call for entire batch
-      const response = await openai.embeddings.create({
+      const response = await getOpenAI().embeddings.create({
         input: batchTexts,
         model: EMBEDDING_MODEL,
       })
