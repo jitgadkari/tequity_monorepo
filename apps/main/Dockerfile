@@ -21,6 +21,8 @@ RUN corepack enable pnpm && cd apps/main && npx prisma generate
 
 # Build with turbo
 ENV NEXT_TELEMETRY_DISABLED=1
+# Dummy OPENAI_API_KEY for build time - OpenAI SDK validates key exists even in lazy init
+ENV OPENAI_API_KEY="sk-dummy-build-time-key"
 RUN corepack enable pnpm && pnpm turbo build --filter=@tequity/main
 
 # Production image

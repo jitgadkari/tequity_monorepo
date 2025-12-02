@@ -83,6 +83,7 @@ jobs:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
           JWT_SECRET: "ci-build-dummy-secret-at-least-32-chars"
           ENCRYPTION_KEY: "ci-build-dummy-encryption-key-32c"
+          OPENAI_API_KEY: "sk-dummy-build-time-key"
 
   docker-build-test:
     name: Docker Build Test
