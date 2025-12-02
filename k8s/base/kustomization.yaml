@@ -6,7 +6,6 @@ namespace: tequity
 resources:
   - namespace.yaml
   - serviceaccount.yaml
-  - configmap.yaml
   - secrets.yaml
   - main-deployment.yaml
   - main-service.yaml
@@ -16,6 +15,19 @@ resources:
   - admin-hpa.yaml
   - ingress.yaml
 
-commonLabels:
-  app.kubernetes.io/part-of: tequity
-  app.kubernetes.io/managed-by: kustomize
+# Use configMapGenerator instead of resource file for proper overlay merging
+configMapGenerator:
+  - name: app-config
+    literals:
+      - NODE_ENV=production
+      - GCP_REGION=us-central1
+      - NEXT_PUBLIC_APP_URL=https://app.ajitgadkari.com
+      - NEXT_PUBLIC_ADMIN_URL=https://admin.ajitgadkari.com
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: tequity
+      app.kubernetes.io/managed-by: kustomize

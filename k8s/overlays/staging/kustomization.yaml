@@ -38,5 +38,5 @@ configMapGenerator:
   - name: app-config
     behavior: merge
     literals:
-      - NEXT_PUBLIC_APP_URL=https://staging.tequity.com
-      - NEXT_PUBLIC_ADMIN_URL=https://admin-staging.tequity.com
+      - NEXT_PUBLIC_APP_URL=https://staging.ajitgadkari.com
+      - NEXT_PUBLIC_ADMIN_URL=https://admin-staging.ajitgadkari.com
