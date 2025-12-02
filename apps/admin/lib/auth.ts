@@ -15,7 +15,7 @@ export interface AdminJWTPayload {
 
 // Create JWT token
 export async function createToken(payload: AdminJWTPayload): Promise<string> {
-  return await new SignJWT(payload as any)
+  return await new SignJWT(payload as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d') // 7 days

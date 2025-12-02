@@ -755,7 +755,7 @@ export default function SettingsModal() {
               Remove User
             </h3>
             <p className={`text-sm mb-6 ${isLight ? "text-gray-600" : "text-zinc-400"}`}>
-              Once you remove {userToRemove.name}, they'll lose access to all data. You can re-invite them anytime later.
+              Once you remove {userToRemove.name}, they&apos;ll lose access to all data. You can re-invite them anytime later.
             </p>
             <div className="flex gap-3 justify-end">
               <button

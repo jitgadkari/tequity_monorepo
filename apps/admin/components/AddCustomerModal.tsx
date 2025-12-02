@@ -86,8 +86,9 @@ export default function AddCustomerModal({
         slug: "",
         useCase: "",
       });
-    } catch (err: any) {
-      setError(err.message || 'Failed to create tenant. Please try again.');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create tenant. Please try again.';
+      setError(errorMessage);
       console.error('Error creating tenant:', err);
     } finally {
       setLoading(false);

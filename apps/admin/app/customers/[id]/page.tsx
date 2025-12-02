@@ -1734,7 +1734,7 @@ export default function TenantProfilePage() {
                   <p className={`mt-1 text-sm ${
                     isLight ? "text-gray-600" : "text-zinc-400"
                   }`}>
-                    Manage the Customer's status. Actions here affect service availability and data retention.
+                    Manage the Customer&apos;s status. Actions here affect service availability and data retention.
                   </p>
                 </div>
                 <div className="p-6 space-y-6">
