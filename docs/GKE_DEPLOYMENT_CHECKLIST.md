@@ -9,22 +9,22 @@
 ## Deployment Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          GIT BRANCHING STRATEGY                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   feature/* ──► develop ──────────────────────► main ──► tag v1.0.0        │
-│                    │                              │           │              │
-│                    ▼                              │           ▼              │
-│              ┌─────────────┐                      │    ┌─────────────┐      │
-│              │   STAGING   │                      │    │ PRODUCTION  │      │
-│              │  (auto)     │                      │    │ (on tag)    │      │
-│              └─────────────┘                      │    └─────────────┘      │
-│                                                   │                          │
-│   Push to develop → Build → Deploy to Staging    │                          │
-│   Create tag v* → Build → Deploy to Production                              │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------------------+
+|                          GIT BRANCHING STRATEGY                              |
++-----------------------------------------------------------------------------+
+|                                                                              |
+|   feature/* --> develop ---------------------------> main --> tag v1.0.0    |
+|                    |                              |           |              |
+|                    v                              |           v              |
+|              +-----------+                        |    +-----------+        |
+|              |   STAGING   |                      |    | PRODUCTION  |      |
+|              |  (auto)     |                      |    | (on tag)    |      |
+|              +-----------+                        |    +-----------+        |
+|                                                   |                          |
+|   Push to develop -> Build -> Deploy to Staging   |                          |
+|   Create tag v* -> Build -> Deploy to Production                             |
+|                                                                              |
++-----------------------------------------------------------------------------+
 ```
 
 ### Triggers:
@@ -161,7 +161,28 @@ gcloud projects add-iam-policy-binding tequity-ajit \
 - [x] `roles/cloudsql.admin` - Manage Cloud SQL (for provisioning)
 - [x] `roles/storage.admin` - Manage Cloud Storage buckets
 - [x] `roles/iam.serviceAccountAdmin` - Create tenant service accounts
-- [ ] `roles/secretmanager.admin` - Manage tenant secrets
+- [x] `roles/secretmanager.admin` - Manage tenant secrets
+
+### 2.3 Grant Artifact Registry Reader to GKE Nodes (CRITICAL!)
+**This allows GKE nodes to pull Docker images from Artifact Registry:**
+```bash
+# Get the project number
+PROJECT_NUMBER=$(gcloud projects describe tequity-ajit --format='value(projectNumber)')
+COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+echo "Granting Artifact Registry Reader to: $COMPUTE_SA"
+
+# Grant to Compute Engine default service account (used by GKE nodes)
+gcloud projects add-iam-policy-binding tequity-ajit \
+  --member="serviceAccount:${COMPUTE_SA}" \
+  --role="roles/artifactregistry.reader"
+
+# Grant to GKE service agent (for Autopilot)
+gcloud projects add-iam-policy-binding tequity-ajit \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@container-engine-robot.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+```
+- [x] `roles/artifactregistry.reader` - GKE nodes can pull images
 
 ### Note on Service Account Keys vs Workload Identity
 
@@ -195,12 +216,12 @@ cat github-actions-key.json
 - [x] Service account key created
 
 ### 3.2 Add GitHub Repository Secrets
-Go to: GitHub Repo → Settings → Secrets and variables → Actions → New repository secret
+Go to: GitHub Repo -> Settings -> Secrets and variables -> Actions -> New repository secret
 
 | Secret Name | Value | Status |
 |-------------|-------|--------|
-| `GCP_PROJECT_ID` | `tequity-ajit` | [ ] Added |
-| `GCP_SA_KEY` | (paste entire JSON from github-actions-key.json) | [ ] Added |
+| `GCP_PROJECT_ID` | `tequity-ajit` | [x] Added |
+| `GCP_SA_KEY` | (paste entire JSON from github-actions-key.json) | [x] Added |
 
 ---
 
@@ -275,7 +296,7 @@ kubectl create secret generic app-secrets -n tequity-staging \
   --from-literal=SHARED_SQL_ADMIN_PASSWORD='YOUR_SQL_PASSWORD' \
   --from-literal=GCP_PROJECT_ID='tequity-ajit'
 ```
-- [ ] Staging secrets created
+- [x] Staging secrets created
 
 ### 4.6a Create Staging ConfigMap
 ```bash
@@ -289,11 +310,11 @@ kubectl create configmap app-config -n tequity-staging \
   --from-literal=SHARED_SQL_CONNECTION_NAME='tequity-ajit:us-central1:tequity-shared-development' \
   --from-literal=SHARED_SQL_IP='34.9.81.187' \
   --from-literal=EMAIL_PROVIDER='mock' \
-  --from-literal=NEXT_PUBLIC_APP_URL='https://tequity-staging.ajitgadkari.com' \
-  --from-literal=NEXT_PUBLIC_ADMIN_URL='https://tequity-admin-staging.ajitgadkari.com' \
-  --from-literal=NEXT_PUBLIC_CUSTOMER_APP_URL='https://tequity-staging.ajitgadkari.com'
+  --from-literal=NEXT_PUBLIC_APP_URL='https://staging.ajitgadkari.com' \
+  --from-literal=NEXT_PUBLIC_ADMIN_URL='https://admin-staging.ajitgadkari.com' \
+  --from-literal=NEXT_PUBLIC_CUSTOMER_APP_URL='https://staging.ajitgadkari.com'
 ```
-- [ ] Staging configmap created
+- [x] Staging configmap created
 
 ---
 
@@ -368,9 +389,9 @@ kubectl create configmap app-config -n tequity \
   --from-literal=SHARED_SQL_CONNECTION_NAME='tequity-ajit:us-central1:tequity-shared-development' \
   --from-literal=SHARED_SQL_IP='34.9.81.187' \
   --from-literal=EMAIL_PROVIDER='resend' \
-  --from-literal=NEXT_PUBLIC_APP_URL='https://tequity.ajitgadkari.com' \
-  --from-literal=NEXT_PUBLIC_ADMIN_URL='https://tequity-admin.ajitgadkari.com' \
-  --from-literal=NEXT_PUBLIC_CUSTOMER_APP_URL='https://tequity.ajitgadkari.com'
+  --from-literal=NEXT_PUBLIC_APP_URL='https://app.ajitgadkari.com' \
+  --from-literal=NEXT_PUBLIC_ADMIN_URL='https://admin.ajitgadkari.com' \
+  --from-literal=NEXT_PUBLIC_CUSTOMER_APP_URL='https://app.ajitgadkari.com'
 ```
 - [ ] Production configmap created
 
@@ -387,7 +408,7 @@ This will automatically trigger:
 1. Build and push Docker images to Artifact Registry
 2. Deploy to staging namespace
 
-- [ ] develop branch created and pushed
+- [x] develop branch created and pushed
 
 ### 5.2 Manual Build & Push (Alternative - if CI/CD not ready)
 Run locally or in Cloud Shell:
@@ -403,14 +424,14 @@ docker push us-central1-docker.pkg.dev/tequity-ajit/tequity/main-app:staging
 docker build -t us-central1-docker.pkg.dev/tequity-ajit/tequity/admin-app:staging -f apps/admin/Dockerfile .
 docker push us-central1-docker.pkg.dev/tequity-ajit/tequity/admin-app:staging
 ```
-- [ ] Main app image pushed
-- [ ] Admin app image pushed
+- [x] Main app image pushed
+- [x] Admin app image pushed
 
 ### 5.3 Manual Deploy (if needed)
 ```bash
 kubectl apply -k k8s/overlays/staging
 ```
-- [ ] Staging deployment applied
+- [x] Staging deployment applied
 
 ### 5.4 Verify Deployment
 ```bash
@@ -424,33 +445,42 @@ kubectl get services -n tequity-staging
 kubectl logs -f deployment/main-app -n tequity-staging
 kubectl logs -f deployment/admin-app -n tequity-staging
 ```
-- [ ] Pods running
-- [ ] Services created
+- [x] Pods running
+- [x] Services created
 
 ---
 
-## Phase 6: DNS & Ingress (LATER)
+## Phase 6: DNS & Ingress
 
-### 6.1 Get External IP
+### 6.1 Reserve Static IP (Optional but recommended)
+```bash
+# Reserve a global static IP for the ingress
+gcloud compute addresses create tequity-ip --global
+
+# Get the IP address
+gcloud compute addresses describe tequity-ip --global --format='value(address)'
+```
+
+### 6.2 Get External IP (from Ingress)
 ```bash
 kubectl get ingress -n tequity-staging
 kubectl get ingress -n tequity
 ```
 
-### 6.2 Configure DNS Records (ajitgadkari.com)
+### 6.3 Configure DNS Records (ajitgadkari.com)
 | Subdomain | Type | Environment | Value |
 |-----------|------|-------------|-------|
-| `tequity-staging` | A | Staging main app | (staging ingress IP) |
-| `tequity-admin-staging` | A | Staging admin | (staging ingress IP) |
-| `tequity` | A | Production main app | (production ingress IP) |
-| `tequity-admin` | A | Production admin | (production ingress IP) |
+| `staging` | A | Staging main app | (staging ingress IP) |
+| `admin-staging` | A | Staging admin | (staging ingress IP) |
+| `app` | A | Production main app | (production ingress IP) |
+| `admin` | A | Production admin | (production ingress IP) |
 
 **Full URLs:**
-- Staging: `https://tequity-staging.ajitgadkari.com`, `https://tequity-admin-staging.ajitgadkari.com`
-- Production: `https://tequity.ajitgadkari.com`, `https://tequity-admin.ajitgadkari.com`
+- Staging: `https://staging.ajitgadkari.com`, `https://admin-staging.ajitgadkari.com`
+- Production: `https://app.ajitgadkari.com`, `https://admin.ajitgadkari.com`
 
 - [ ] DNS records configured
-- [ ] SSL certificates provisioned
+- [ ] SSL certificates provisioned (managed by GKE)
 
 ---
 
@@ -459,6 +489,7 @@ kubectl get ingress -n tequity
 | Resource | Value |
 |----------|-------|
 | GCP Project | `tequity-ajit` |
+| GCP Project Number | `926649956950` |
 | Region | `us-central1` |
 | GKE Cluster | `tequity-cluster-1` |
 | Artifact Registry | `us-central1-docker.pkg.dev/tequity-ajit/tequity` |
@@ -466,12 +497,32 @@ kubectl get ingress -n tequity
 | Cloud SQL IP | `34.9.81.187` |
 | GitHub Actions SA | `github-actions@tequity-ajit.iam.gserviceaccount.com` |
 | Workload SA | `tequity-workload@tequity-ajit.iam.gserviceaccount.com` |
+| Compute SA | `926649956950-compute@developer.gserviceaccount.com` |
 | Staging Namespace | `tequity-staging` |
 | Production Namespace | `tequity` |
 
 ---
 
 ## Troubleshooting
+
+### ImagePullBackOff - 403 Forbidden
+If pods show `ImagePullBackOff` with `403 Forbidden` when pulling images:
+```bash
+# Grant Artifact Registry Reader to GKE node service accounts
+PROJECT_NUMBER=$(gcloud projects describe tequity-ajit --format='value(projectNumber)')
+
+gcloud projects add-iam-policy-binding tequity-ajit \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+
+gcloud projects add-iam-policy-binding tequity-ajit \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@container-engine-robot.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+
+# Restart deployments to retry image pull
+kubectl rollout restart deployment/main-app -n tequity-staging
+kubectl rollout restart deployment/admin-app -n tequity-staging
+```
 
 ### Check pod logs
 ```bash
@@ -490,6 +541,11 @@ kubectl describe pod -l app=main-app -n tequity-staging
 kubectl describe pod -l app=admin-app -n tequity-staging
 ```
 
+### Check events (for debugging)
+```bash
+kubectl get events -n tequity-staging --sort-by='.lastTimestamp'
+```
+
 ### Restart deployment
 ```bash
 kubectl rollout restart deployment/main-app -n tequity-staging
@@ -503,7 +559,7 @@ kubectl delete secret app-secrets -n tequity-staging
 ```
 
 ### Check GitHub Actions workflow
-Go to: GitHub Repo → Actions → See workflow runs
+Go to: GitHub Repo -> Actions -> See workflow runs
 
 ### View all resources in namespace
 ```bash
@@ -542,11 +598,12 @@ kubectl create secret generic app-secrets -n tequity-staging \
 - [x] Create tequity-workload service account
 - [x] Assign IAM roles to github-actions
 - [x] Assign IAM roles to tequity-workload
+- [x] Grant artifactregistry.reader to GKE node service accounts
 
 ### Phase 3: GitHub Actions
 - [x] Create service account key
-- [ ] Add GCP_PROJECT_ID secret to GitHub
-- [ ] Add GCP_SA_KEY secret to GitHub
+- [x] Add GCP_PROJECT_ID secret to GitHub
+- [x] Add GCP_SA_KEY secret to GitHub
 
 ### Phase 4: Kubernetes Setup
 - [x] Get cluster credentials
@@ -554,15 +611,43 @@ kubectl create secret generic app-secrets -n tequity-staging \
 - [x] Create tequity namespace
 - [x] Create K8s service accounts
 - [x] Bind Workload Identity (both namespaces)
-- [ ] Create staging secrets
-- [ ] Create staging configmap
+- [x] Create staging secrets
+- [x] Create staging configmap
 - [ ] Create production secrets
 - [ ] Create production configmap
 
 ### Phase 5: First Deployment
-- [ ] Create and push develop branch
-- [ ] Verify staging deployment
+- [x] Create and push develop branch
+- [x] Verify staging deployment (pods running)
 
 ### Phase 6: DNS & Ingress
+- [ ] Reserve static IP
 - [ ] Configure DNS records
-- [ ] SSL certificates
+- [ ] SSL certificates provisioned
+
+---
+
+## CI/CD Workflow Summary
+
+The `build-push.yaml` workflow handles everything in one workflow:
+
+1. **Push to `develop`**: Build images -> Deploy to staging
+2. **Push to `main`**: Build images only (no deploy)
+3. **Create `v*` tag**: Build images -> Deploy to production
+
+### Workflow Jobs:
+```
+build-and-push (always runs)
+    |
+    +---> deploy-staging (if environment == staging)
+    |
+    +---> deploy-production (if environment == production)
+```
+
+### Manual Deployment (if needed):
+```bash
+# Re-run failed deployment
+kubectl apply -k k8s/overlays/staging
+
+# Or trigger workflow manually from GitHub Actions UI
+```
