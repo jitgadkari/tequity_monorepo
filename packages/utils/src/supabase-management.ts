@@ -77,7 +77,7 @@ export async function createSupabaseProject(
     throw new Error(`Failed to create Supabase project: ${error}`);
   }
 
-  const project = await response.json();
+  const project = await response.json() as CreateProjectResponse;
   return { project, dbPassword };
 }
 
@@ -95,7 +95,7 @@ export async function getProjectStatus(projectRef: string): Promise<ProjectStatu
     throw new Error(`Failed to get project status: ${error}`);
   }
 
-  return response.json();
+  return response.json() as Promise<ProjectStatus>;
 }
 
 export async function getProjectApiKeys(projectRef: string): Promise<ApiKey[]> {
@@ -112,7 +112,7 @@ export async function getProjectApiKeys(projectRef: string): Promise<ApiKey[]> {
     throw new Error(`Failed to get API keys: ${error}`);
   }
 
-  return response.json();
+  return response.json() as Promise<ApiKey[]>;
 }
 
 export async function waitForProjectReady(
