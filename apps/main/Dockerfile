@@ -3,7 +3,7 @@
 # Using Debian slim instead of Alpine for better native module compatibility (lightningcss, etc.)
 
 FROM node:20-slim AS base
-RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl ca-certificates curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Install dependencies - copy everything and install
@@ -34,6 +34,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 nextjs
 
+# Install Pulumi CLI (required by Automation API)
+RUN curl -fsSL https://get.pulumi.com | sh
+ENV PATH="/root/.pulumi/bin:${PATH}"
+
 # Copy public assets
 COPY --from=builder /app/apps/main/public ./apps/main/public
 
@@ -41,16 +45,20 @@ COPY --from=builder /app/apps/main/public ./apps/main/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/main/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/main/.next/static ./apps/main/.next/static
 
-# Copy Prisma clients from builder (standalone should include them, but be safe)
-# The generated Prisma clients are at @prisma/master-client and @prisma/tenant-client
+# Copy Prisma clients from builder
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Copy Pulumi packages (marked as external in next.config.ts)
-# These have native dependencies and can't be bundled by webpack
-COPY --from=builder /app/node_modules/@pulumi ./node_modules/@pulumi
-COPY --from=builder /app/node_modules/@grpc ./node_modules/@grpc
-COPY --from=builder /app/node_modules/google-protobuf ./node_modules/google-protobuf
-COPY --from=builder /app/node_modules/protobufjs ./node_modules/protobufjs
+# Copy Pulumi packages from infrastructure directory (pnpm workspace isolation)
+# These are required for tenant provisioning via @pulumi/pulumi/automation
+COPY --from=builder /app/infrastructure/tenant-provisioner/node_modules/@pulumi ./node_modules/@pulumi
+COPY --from=builder /app/infrastructure/tenant-provisioner/node_modules/@grpc ./node_modules/@grpc
+COPY --from=builder /app/infrastructure/tenant-provisioner/node_modules/google-protobuf ./node_modules/google-protobuf
+COPY --from=builder /app/infrastructure/tenant-provisioner/node_modules/@opentelemetry ./node_modules/@opentelemetry
+COPY --from=builder /app/infrastructure/tenant-provisioner/node_modules/@npmcli ./node_modules/@npmcli
+
+# Copy infrastructure code for Pulumi automation API to run stacks
+COPY --from=builder /app/infrastructure/tenant-provisioner ./infrastructure/tenant-provisioner
+COPY --from=builder /app/infrastructure/shared-instance ./infrastructure/shared-instance
 
 USER nextjs
 
