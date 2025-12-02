@@ -6,6 +6,10 @@ namespace: tequity
 resources:
   - ../../base
 
+# Production-specific patches
+patchesStrategicMerge:
+  - ingress-patch.yaml
+
 # Image configuration - will be replaced by CI/CD
 images:
   - name: main-app

@@ -3,13 +3,10 @@ kind: Ingress
 metadata:
   name: tequity-ingress
   annotations:
-    kubernetes.io/ingress.class: "gce"
-    kubernetes.io/ingress.global-static-ip-name: "tequity-staging-ip"
-    networking.gke.io/managed-certificates: "tequity-cert"
-    kubernetes.io/ingress.allow-http: "true"
+    kubernetes.io/ingress.global-static-ip-name: "tequity-production-ip"
 spec:
   rules:
-    - host: staging.ajitgadkari.com
+    - host: app.ajitgadkari.com
       http:
         paths:
           - path: /
@@ -19,7 +16,7 @@ spec:
                 name: main-app
                 port:
                   number: 80
-    - host: admin-staging.ajitgadkari.com
+    - host: admin.ajitgadkari.com
       http:
         paths:
           - path: /
@@ -30,12 +27,11 @@ spec:
                 port:
                   number: 80
 ---
-# Managed Certificate for HTTPS
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
 metadata:
   name: tequity-cert
 spec:
   domains:
-    - staging.ajitgadkari.com
-    - admin-staging.ajitgadkari.com
+    - app.ajitgadkari.com
+    - admin.ajitgadkari.com
