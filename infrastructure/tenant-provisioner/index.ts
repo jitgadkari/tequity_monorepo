@@ -93,9 +93,11 @@ if (useSharedInstance) {
 
   // Reference the existing shared Cloud SQL instance (don't create a new one!)
   // Use explicit provider to ensure correct project is used
+  // Signature: get(name, id, state?, opts?) - pass undefined for state
   const sharedInstance = gcp.sql.DatabaseInstance.get(
     "shared-sql-instance",
     sharedSqlInstance!,
+    undefined,
     { provider: gcpProvider }
   );
 
