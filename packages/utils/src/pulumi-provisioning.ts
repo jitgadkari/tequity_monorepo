@@ -220,6 +220,14 @@ export async function provisionWithPulumi(
   const pulumiPassphrase = process.env.PULUMI_CONFIG_PASSPHRASE;
   const gcpProjectId = process.env.GCP_PROJECT_ID;
 
+  // Debug: Log token presence and first characters (for verification)
+  console.log(`[Pulumi] PULUMI_ACCESS_TOKEN present: ${!!pulumiAccessToken}`);
+  if (pulumiAccessToken) {
+    console.log(`[Pulumi] Token starts with: ${pulumiAccessToken.substring(0, 10)}...`);
+  }
+  console.log(`[Pulumi] PULUMI_CONFIG_PASSPHRASE present: ${!!pulumiPassphrase}`);
+  console.log(`[Pulumi] GCP_PROJECT_ID: ${gcpProjectId}`);
+
   if (!pulumiAccessToken && !pulumiPassphrase) {
     return {
       success: false,
