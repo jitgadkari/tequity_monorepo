@@ -6,7 +6,7 @@ namespace: tequity
 resources:
   - namespace.yaml
   - serviceaccount.yaml
-  - secrets.yaml
+  # secrets.yaml removed - secrets are managed by CI/CD workflow from GitHub Secrets
   - main-deployment.yaml
   - main-service.yaml
   - main-hpa.yaml
