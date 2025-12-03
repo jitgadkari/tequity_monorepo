@@ -6,4 +6,6 @@ runtime:
     # Default: index.ts (creates dedicated Cloud SQL instance per tenant)
     # Shared mode: PULUMI_MAIN=index-shared (uses shared Cloud SQL instance)
     typescript: true
+    # Increase Node.js memory limit to prevent OOM during provisioning
+    nodeargs: "--max-old-space-size=512"
 description: GCP infrastructure provisioning for Tequity tenants (Cloud SQL + Storage per tenant)
