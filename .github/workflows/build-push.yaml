@@ -192,6 +192,9 @@ jobs:
       - name: Deploy to staging
         run: |
           kubectl apply -k k8s/overlays/staging
+          # Force restart to pick up new secrets/configmaps
+          kubectl rollout restart deployment/main-app -n tequity-staging
+          kubectl rollout restart deployment/admin-app -n tequity-staging
           kubectl rollout status deployment/main-app -n tequity-staging --timeout=300s
           kubectl rollout status deployment/admin-app -n tequity-staging --timeout=300s
 
