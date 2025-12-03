@@ -26,8 +26,11 @@ const enableBackups = config.getBoolean("enableBackups") ?? false;
 const deletionProtection = config.getBoolean("deletionProtection") ?? false;
 const skipServiceAccountKey = config.getBoolean("skipServiceAccountKey") ?? true;
 
-const project = gcpConfig.require("project");
-const region = gcpConfig.get("region") || "us-central1";
+// TEMPORARY: Hardcode project ID as fallback until env var propagation is fixed
+const project = gcpConfig.get("project") || process.env.GCP_PROJECT_ID || "tequity-ajit";
+const region = gcpConfig.get("region") || process.env.GCP_REGION || "us-central1";
+
+console.log(`[Pulumi] Using project: ${project}, region: ${region}`);
 
 // Check if using shared instance mode
 const sharedSqlInstance = config.get("sharedSqlInstance") || process.env.SHARED_SQL_INSTANCE_NAME;
