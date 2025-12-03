@@ -38,5 +38,16 @@ configMapGenerator:
   - name: app-config
     behavior: merge
     literals:
+      - NODE_ENV=staging
+      - DEPLOY_ENV=staging
+      - GCP_PROJECT_ID=tequity-ajit
+      - GCP_REGION=us-central1
+      - PROVISIONING_PROVIDER=pulumi
+      - USE_SHARED_INSTANCE=true
+      - SHARED_SQL_INSTANCE_NAME=tequity-shared-development
+      - SHARED_SQL_CONNECTION_NAME=tequity-ajit:us-central1:tequity-shared-development
+      - SHARED_SQL_IP=34.9.81.187
+      - EMAIL_PROVIDER=mock
       - NEXT_PUBLIC_APP_URL=https://staging.ajitgadkari.com
       - NEXT_PUBLIC_ADMIN_URL=https://admin-staging.ajitgadkari.com
+      - NEXT_PUBLIC_CUSTOMER_APP_URL=https://staging.ajitgadkari.com
