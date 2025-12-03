@@ -39,6 +39,9 @@ coverage
 *.pem
 *.local
 
+# GitHub secrets reference files
+.github/secrets-*.txt
+
 # GCP service account keys
 *.json
 !package.json
