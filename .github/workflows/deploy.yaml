@@ -73,9 +73,28 @@ jobs:
             main-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/tequity/main-app:${{ steps.image-tag.outputs.tag }} \
             admin-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/tequity/admin-app:${{ steps.image-tag.outputs.tag }}
 
+      - name: Update secrets from GitHub Secrets
+        run: |
+          kubectl create secret generic app-secrets \
+            --namespace=tequity-staging \
+            --from-literal=DATABASE_URL="${{ secrets.STAGING_DATABASE_URL }}" \
+            --from-literal=MASTER_DATABASE_URL="${{ secrets.STAGING_DATABASE_URL }}" \
+            --from-literal=JWT_SECRET="${{ secrets.STAGING_JWT_SECRET }}" \
+            --from-literal=ENCRYPTION_KEY="${{ secrets.STAGING_ENCRYPTION_KEY }}" \
+            --from-literal=SERVICE_API_KEY="${{ secrets.STAGING_SERVICE_API_KEY }}" \
+            --from-literal=GCP_PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}" \
+            --from-literal=PULUMI_ACCESS_TOKEN="${{ secrets.PULUMI_ACCESS_TOKEN }}" \
+            --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --from-literal=SHARED_SQL_ADMIN_USER="postgres" \
+            --from-literal=SHARED_SQL_ADMIN_PASSWORD="${{ secrets.STAGING_SQL_PASSWORD }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy to staging
         run: |
           kubectl apply -k k8s/overlays/staging
+          # Restart deployments to ensure they pick up new secrets
+          kubectl rollout restart deployment/main-app -n tequity-staging
+          kubectl rollout restart deployment/admin-app -n tequity-staging
           kubectl rollout status deployment/main-app -n tequity-staging --timeout=300s
           kubectl rollout status deployment/admin-app -n tequity-staging --timeout=300s
 
