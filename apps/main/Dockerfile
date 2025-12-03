@@ -40,10 +40,13 @@ RUN curl -fsSL https://get.pulumi.com | sh && \
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOME=/home/nextjs
 
-# Create non-root user
+# Create non-root user with home directory (required for Pulumi)
 RUN groupadd --system --gid 1001 nodejs && \
-    useradd --system --uid 1001 nextjs
+    useradd --system --uid 1001 --create-home --home-dir /home/nextjs nextjs && \
+    mkdir -p /home/nextjs/.pulumi && \
+    chown -R nextjs:nodejs /home/nextjs
 
 # Copy public assets
 COPY --from=builder /app/apps/main/public ./apps/main/public
