@@ -184,10 +184,10 @@ jobs:
             main-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/main-app:${{ needs.build-and-push.outputs.sha_short }} \
             admin-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/admin-app:${{ needs.build-and-push.outputs.sha_short }}
 
-      - name: Update Pulumi credentials
+      - name: Update secrets from GitHub Secrets
         run: |
           kubectl patch secret app-secrets -n tequity-staging \
-            -p '{"stringData":{"PULUMI_ACCESS_TOKEN":"${{ secrets.PULUMI_ACCESS_TOKEN }}"}}'
+            -p '{"stringData":{"PULUMI_ACCESS_TOKEN":"${{ secrets.PULUMI_ACCESS_TOKEN }}","GCP_PROJECT_ID":"${{ secrets.GCP_PROJECT_ID }}"}}'
 
       - name: Deploy to staging
         run: |
@@ -245,10 +245,10 @@ jobs:
             main-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/main-app:${{ needs.build-and-push.outputs.sha_short }} \
             admin-app=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/admin-app:${{ needs.build-and-push.outputs.sha_short }}
 
-      - name: Update Pulumi credentials
+      - name: Update secrets from GitHub Secrets
         run: |
           kubectl patch secret app-secrets -n tequity \
-            -p '{"stringData":{"PULUMI_ACCESS_TOKEN":"${{ secrets.PULUMI_ACCESS_TOKEN }}"}}'
+            -p '{"stringData":{"PULUMI_ACCESS_TOKEN":"${{ secrets.PULUMI_ACCESS_TOKEN }}","GCP_PROJECT_ID":"${{ secrets.GCP_PROJECT_ID }}"}}'
 
       - name: Deploy to production
         run: |
