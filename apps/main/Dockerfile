@@ -30,6 +30,9 @@ RUN corepack enable pnpm && pnpm turbo build --filter=@tequity/main
 FROM node:20-slim AS runner
 WORKDIR /app
 
+# Install system dependencies required for Prisma and Pulumi
+RUN apt-get update && apt-get install -y openssl ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -52,12 +55,17 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/infrastructure/tenant-provisioner/node_modules ./node_modules_pulumi
 
 # Merge Pulumi node_modules into app node_modules
-RUN cp -r ./node_modules_pulumi/* ./node_modules/ 2>/dev/null || true && \
+# Ensure node_modules exists, copy files, and fix permissions
+RUN mkdir -p ./node_modules && \
+    cp -r ./node_modules_pulumi/* ./node_modules/ 2>/dev/null || true && \
     rm -rf ./node_modules_pulumi
 
 # Copy infrastructure code for Pulumi automation API to run stacks
 COPY --from=builder /app/infrastructure/tenant-provisioner ./infrastructure/tenant-provisioner
 COPY --from=builder /app/infrastructure/shared-instance ./infrastructure/shared-instance
+
+# Fix permissions for all files
+RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 
