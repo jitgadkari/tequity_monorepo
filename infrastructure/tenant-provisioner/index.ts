@@ -26,11 +26,23 @@ const enableBackups = config.getBoolean("enableBackups") ?? false;
 const deletionProtection = config.getBoolean("deletionProtection") ?? false;
 const skipServiceAccountKey = config.getBoolean("skipServiceAccountKey") ?? true;
 
-// TEMPORARY: Hardcode project ID as fallback until env var propagation is fixed
-const project = gcpConfig.get("project") || process.env.GCP_PROJECT_ID || "tequity-ajit";
-const region = gcpConfig.get("region") || process.env.GCP_REGION || "us-central1";
+// PRIORITY ORDER for GCP Project:
+// 1. Environment variable (set by K8s configmap/secrets) - MOST RELIABLE
+// 2. Pulumi config (may have stale "placeholder" value from previous runs)
+// 3. Hardcoded fallback
+const project = process.env.GCP_PROJECT_ID || gcpConfig.get("project") || "tequity-ajit";
+const region = process.env.GCP_REGION || gcpConfig.get("region") || "us-central1";
 
 console.log(`[Pulumi] Using project: ${project}, region: ${region}`);
+console.log(`[Pulumi] GCP_PROJECT_ID env: ${process.env.GCP_PROJECT_ID}`);
+console.log(`[Pulumi] gcp:project config: ${gcpConfig.get("project")}`);
+
+// Create an explicit GCP provider with the correct project
+// This overrides any stale config stored in Pulumi Cloud
+const gcpProvider = new gcp.Provider("gcp-provider", {
+  project: project,
+  region: region,
+});
 
 // Check if using shared instance mode
 const sharedSqlInstance = config.get("sharedSqlInstance") || process.env.SHARED_SQL_INSTANCE_NAME;
@@ -80,9 +92,11 @@ if (useSharedInstance) {
   console.log("[Pulumi] Using SHARED instance - only creating DB, user, and storage");
 
   // Reference the existing shared Cloud SQL instance (don't create a new one!)
+  // Use explicit provider to ensure correct project is used
   const sharedInstance = gcp.sql.DatabaseInstance.get(
     "shared-sql-instance",
-    sharedSqlInstance!
+    sharedSqlInstance!,
+    { provider: gcpProvider }
   );
 
   cloudSqlInstanceName = pulumi.output(sharedSqlInstance!);
@@ -100,6 +114,7 @@ if (useSharedInstance) {
     databaseVersion: "POSTGRES_15",
     region: region,
     deletionProtection: deletionProtection,
+    project: project,
     settings: {
       tier: databaseTier,
       availabilityType: environment === "production" ? "REGIONAL" : "ZONAL",
@@ -156,7 +171,7 @@ if (useSharedInstance) {
         "managed-by": "pulumi",
       },
     },
-  });
+  }, { provider: gcpProvider });
 
   cloudSqlInstanceName = cloudSqlInstance.name;
   cloudSqlConnectionName = cloudSqlInstance.connectionName;
@@ -167,14 +182,15 @@ if (useSharedInstance) {
     accountId: `${resourcePrefix}`.substring(0, 28),
     displayName: `Tenant ${tenantId} Service Account`,
     description: `Service account for tenant ${tenantId} in ${environment} environment`,
-  });
+    project: project,
+  }, { provider: gcpProvider });
 
   // Create service account key if allowed
   if (!skipServiceAccountKey) {
     serviceAccountKey = new gcp.serviceaccount.Key(`${resourcePrefix}-sa-key`, {
       serviceAccountId: serviceAccount.name,
       publicKeyType: "TYPE_X509_PEM_FILE",
-    });
+    }, { provider: gcpProvider });
   } else {
     console.log("Service account key creation skipped (set tequity:skipServiceAccountKey=false to enable)");
   }
@@ -190,14 +206,16 @@ const database = new gcp.sql.Database(`${resourcePrefix}-db`, {
   instance: useSharedInstance ? sharedSqlInstance! : cloudSqlInstance!.name,
   charset: "UTF8",
   collation: "en_US.UTF8",
-});
+  project: project,
+}, { provider: gcpProvider });
 
 // Create the database user
 const dbUser = new gcp.sql.User(`${resourcePrefix}-user`, {
   name: tenantDbName,
   instance: useSharedInstance ? sharedSqlInstance! : cloudSqlInstance!.name,
   password: dbPassword.result,
-});
+  project: project,
+}, { provider: gcpProvider });
 
 // Create Storage Bucket for tenant files
 const storageBucket = new gcp.storage.Bucket(`${resourcePrefix}-storage`, {
@@ -242,7 +260,8 @@ const storageBucket = new gcp.storage.Bucket(`${resourcePrefix}-storage`, {
   },
 
   forceDestroy: !deletionProtection,
-});
+  project: project,
+}, { provider: gcpProvider });
 
 // ============================================
 // IAM (only in dedicated mode)
@@ -254,14 +273,14 @@ if (!useSharedInstance && serviceAccount) {
     bucket: storageBucket.name,
     role: "roles/storage.objectAdmin",
     member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-  });
+  }, { provider: gcpProvider });
 
   // Grant Cloud SQL Client role to the service account
   new gcp.projects.IAMMember(`${resourcePrefix}-sql-client-iam`, {
     project: project,
     role: "roles/cloudsql.client",
     member: pulumi.interpolate`serviceAccount:${serviceAccount.email}`,
-  });
+  }, { provider: gcpProvider });
 }
 
 // ============================================
