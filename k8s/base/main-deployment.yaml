@@ -44,10 +44,10 @@ spec:
               value: "pulumi"
           resources:
             requests:
-              memory: "512Mi"
+              memory: "768Mi"
               cpu: "200m"
             limits:
-              memory: "1Gi"
+              memory: "1.5Gi"
               cpu: "1000m"
           readinessProbe:
             httpGet:
