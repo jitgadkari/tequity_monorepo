@@ -72,6 +72,10 @@ RUN mkdir -p ./node_modules && \
 COPY --from=builder /app/infrastructure/tenant-provisioner ./infrastructure/tenant-provisioner
 COPY --from=builder /app/infrastructure/shared-instance ./infrastructure/shared-instance
 
+# Copy tenant Prisma schema for database migrations during provisioning
+# The provisioning code expects schema at prisma/schema.prisma relative to /app
+COPY --from=builder /app/apps/main/prisma ./prisma
+
 # Fix permissions for all files
 RUN chown -R nextjs:nodejs /app
 
