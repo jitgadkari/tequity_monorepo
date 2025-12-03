@@ -33,6 +33,11 @@ WORKDIR /app
 # Install system dependencies required for Prisma and Pulumi
 RUN apt-get update && apt-get install -y openssl ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
+# Install Pulumi CLI
+RUN curl -fsSL https://get.pulumi.com | sh && \
+    mv /root/.pulumi/bin/* /usr/local/bin/ && \
+    rm -rf /root/.pulumi
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
