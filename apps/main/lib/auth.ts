@@ -66,10 +66,14 @@ export async function verifyAuth(request: NextRequest): Promise<JWTPayload | nul
   const token = extractTokenFromHeader(request)
 
   if (!token) {
+    console.log('[Auth] No token found in request headers')
     return null
   }
 
-  return verifyToken(token)
+  console.log('[Auth] Token found, verifying...')
+  const payload = await verifyToken(token)
+  console.log('[Auth] Token verification result:', payload ? 'valid' : 'invalid')
+  return payload
 }
 
 /**

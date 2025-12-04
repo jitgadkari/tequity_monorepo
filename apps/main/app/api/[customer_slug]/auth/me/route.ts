@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getTenantDb, isValidTenantSlug } from '@/lib/db'
-import { verifyAuthWithTenant } from '@/lib/auth'
+import { verifyAuthWithTenant, extractTokenFromHeader } from '@/lib/auth'
 import { successResponse, ApiErrors } from '@/lib/api-response'
 
 /**
@@ -13,16 +13,31 @@ export async function GET(
 ) {
   try {
     const { customer_slug: tenantSlug } = await params
+    console.log(`[AUTH/ME] Request for tenant: ${tenantSlug}`)
+
+    // Log auth header presence (not the token itself)
+    const token = extractTokenFromHeader(request)
+    console.log(`[AUTH/ME] Authorization header present: ${!!token}, length: ${token?.length || 0}`)
 
     // Validate tenant slug format
     if (!isValidTenantSlug(tenantSlug)) {
+      console.log(`[AUTH/ME] Invalid tenant slug format: ${tenantSlug}`)
       return ApiErrors.invalidTenant()
     }
 
     // Verify authentication
+    console.log(`[AUTH/ME] Verifying authentication...`)
     const payload = await verifyAuthWithTenant(request, tenantSlug)
 
+    console.log(`[AUTH/ME] Auth verification result:`, payload ? {
+      userId: payload.userId,
+      email: payload.email,
+      tenantSlug: payload.tenantSlug,
+      role: payload.role,
+    } : 'null')
+
     if (!payload) {
+      console.log(`[AUTH/ME] Authentication failed - no payload`)
       return ApiErrors.unauthorized()
     }
 

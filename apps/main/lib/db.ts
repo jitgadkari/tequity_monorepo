@@ -27,21 +27,40 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
   isMock: boolean
 } | null> {
   try {
+    console.log(`[TenantDB] Getting credentials for tenant: ${tenantSlug}`)
     const db = getMasterDb()
 
     const tenant = await db.tenant.findUnique({
       where: { slug: tenantSlug },
+      select: {
+        id: true,
+        slug: true,
+        status: true,
+        databaseUrlEncrypted: true,
+        supabaseProjectId: true,
+        provisioningProvider: true,
+      },
     })
 
+    console.log(`[TenantDB] Tenant lookup result:`, tenant ? {
+      id: tenant.id,
+      slug: tenant.slug,
+      status: tenant.status,
+      provider: tenant.provisioningProvider,
+      hasDbUrl: !!tenant.databaseUrlEncrypted,
+      dbUrlLength: tenant.databaseUrlEncrypted?.length || 0,
+      supabaseProjectId: tenant.supabaseProjectId,
+    } : 'null')
+
     if (!tenant) {
-      console.warn(`Tenant not found: ${tenantSlug}`)
+      console.warn(`[TenantDB] Tenant not found: ${tenantSlug}`)
       return null
     }
 
     // Check if using mock mode
     if (tenant.databaseUrlEncrypted === 'mock_encrypted_url' ||
         tenant.supabaseProjectId?.startsWith('mock_')) {
-      console.log(`Using mock mode for tenant: ${tenantSlug}`)
+      console.log(`[TenantDB] Using mock mode for tenant: ${tenantSlug}`)
       return {
         databaseUrl: process.env.DATABASE_URL || '',
         isMock: true,
@@ -50,14 +69,22 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
 
     // Decrypt the real database URL
     if (!tenant.databaseUrlEncrypted) {
-      console.warn(`No database URL for tenant: ${tenantSlug}`)
+      console.warn(`[TenantDB] No database URL for tenant: ${tenantSlug}`)
       return null
     }
 
+    console.log(`[TenantDB] Decrypting database URL for tenant: ${tenantSlug}`)
     const databaseUrl = decrypt(tenant.databaseUrlEncrypted)
+
+    // Log URL format (redacted for security) to help debug connection issues
+    const urlParts = databaseUrl.split('@')
+    const hostPart = urlParts[1]?.split('/')[0] || 'unknown'
+    const dbPart = urlParts[1]?.split('/')[1]?.split('?')[0] || 'unknown'
+    console.log(`[TenantDB] Decrypted URL - host: ${hostPart}, database: ${dbPart}`)
+
     return { databaseUrl, isMock: false }
   } catch (error) {
-    console.error(`Error getting tenant credentials for ${tenantSlug}:`, error)
+    console.error(`[TenantDB] Error getting tenant credentials for ${tenantSlug}:`, error)
     return null
   }
 }
@@ -70,34 +97,55 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
  * @returns PrismaClient instance connected to tenant's database
  */
 export async function getTenantDb(tenantSlug: string): Promise<PrismaClient> {
+  console.log(`[TenantDB] getTenantDb called for: ${tenantSlug}`)
+
   // Check if we already have a cached client for this tenant
   const cached = tenantClients.get(tenantSlug)
   if (cached) {
+    console.log(`[TenantDB] Using cached client for: ${tenantSlug}`)
     return cached
   }
 
   // Get tenant credentials
+  console.log(`[TenantDB] No cached client, fetching credentials for: ${tenantSlug}`)
   const credentials = await getTenantCredentials(tenantSlug)
 
   // Use default database if credentials not available or in mock mode
-  if (!credentials || credentials.isMock) {
+  if (!credentials) {
+    console.log(`[TenantDB] No credentials found for ${tenantSlug}, using default prisma client`)
+    return prisma
+  }
+
+  if (credentials.isMock) {
+    console.log(`[TenantDB] Mock mode for ${tenantSlug}, using default prisma client`)
     return prisma
   }
 
   // Create new Prisma client for this tenant
-  const tenantPrisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: credentials.databaseUrl,
+  console.log(`[TenantDB] Creating new Prisma client for: ${tenantSlug}`)
+  try {
+    const tenantPrisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: credentials.databaseUrl,
+        },
       },
-    },
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-  })
+      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    })
 
-  // Cache the client
-  tenantClients.set(tenantSlug, tenantPrisma)
+    // Test the connection by running a simple query
+    console.log(`[TenantDB] Testing connection for: ${tenantSlug}`)
+    await tenantPrisma.$connect()
+    console.log(`[TenantDB] Connection successful for: ${tenantSlug}`)
 
-  return tenantPrisma
+    // Cache the client
+    tenantClients.set(tenantSlug, tenantPrisma)
+
+    return tenantPrisma
+  } catch (error) {
+    console.error(`[TenantDB] Failed to connect to tenant database ${tenantSlug}:`, error)
+    throw error
+  }
 }
 
 /**
