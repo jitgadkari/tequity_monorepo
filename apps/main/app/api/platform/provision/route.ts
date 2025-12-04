@@ -181,11 +181,13 @@ async function provisionPulumi(
   }
 
   // Encrypt credentials
-  // For storage: In production use Cloud SQL Proxy socket URL, in dev use direct TCP URL
-  // For migrations: Always use directDatabaseUrl (TCP) since Prisma CLI can't use socket
-  const dbUrlForStorage = process.env.NODE_ENV === 'production'
-    ? result.databaseUrl
-    : result.directDatabaseUrl || result.databaseUrl;
+  // For storage: Only use Cloud SQL Proxy socket URL when Cloud SQL Proxy is deployed
+  // Currently using direct TCP URL for all environments until Cloud SQL Proxy sidecar is added
+  // TODO: Switch to socket URL when Cloud SQL Auth Proxy is deployed as sidecar
+  // const dbUrlForStorage = process.env.DEPLOY_ENV === 'production' && process.env.USE_CLOUD_SQL_PROXY === 'true'
+  //   ? result.databaseUrl
+  //   : result.directDatabaseUrl || result.databaseUrl;
+  const dbUrlForStorage = result.directDatabaseUrl || result.databaseUrl;
   const dbUrlForMigrations = result.directDatabaseUrl || result.databaseUrl;
   const encryptedDbUrl = dbUrlForStorage ? encrypt(dbUrlForStorage) : null;
   const encryptedServiceAccountKey = result.serviceAccountKeyJson
