@@ -186,8 +186,19 @@ jobs:
 
       - name: Update secrets from GitHub Secrets
         run: |
-          kubectl patch secret app-secrets -n tequity-staging \
-            -p '{"stringData":{"PULUMI_ACCESS_TOKEN":"${{ secrets.PULUMI_ACCESS_TOKEN }}","GCP_PROJECT_ID":"${{ secrets.GCP_PROJECT_ID }}"}}'
+          kubectl create secret generic app-secrets \
+            --namespace=tequity-staging \
+            --from-literal=DATABASE_URL="${{ secrets.STAGING_DATABASE_URL }}" \
+            --from-literal=MASTER_DATABASE_URL="${{ secrets.STAGING_DATABASE_URL }}" \
+            --from-literal=JWT_SECRET="${{ secrets.STAGING_JWT_SECRET }}" \
+            --from-literal=ENCRYPTION_KEY="${{ secrets.STAGING_ENCRYPTION_KEY }}" \
+            --from-literal=SERVICE_API_KEY="${{ secrets.STAGING_SERVICE_API_KEY }}" \
+            --from-literal=GCP_PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}" \
+            --from-literal=PULUMI_ACCESS_TOKEN="${{ secrets.PULUMI_ACCESS_TOKEN }}" \
+            --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --from-literal=SHARED_SQL_ADMIN_USER="postgres" \
+            --from-literal=SHARED_SQL_ADMIN_PASSWORD="${{ secrets.STAGING_SQL_PASSWORD }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy to staging
         run: |
@@ -247,12 +258,25 @@ jobs:
 
       - name: Update secrets from GitHub Secrets
         run: |
-          kubectl patch secret app-secrets -n tequity \
-            -p '{"stringData":{"PULUMI_ACCESS_TOKEN":"${{ secrets.PULUMI_ACCESS_TOKEN }}","GCP_PROJECT_ID":"${{ secrets.GCP_PROJECT_ID }}"}}'
+          kubectl create secret generic app-secrets \
+            --namespace=tequity \
+            --from-literal=DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}" \
+            --from-literal=MASTER_DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}" \
+            --from-literal=JWT_SECRET="${{ secrets.PROD_JWT_SECRET }}" \
+            --from-literal=ENCRYPTION_KEY="${{ secrets.PROD_ENCRYPTION_KEY }}" \
+            --from-literal=SERVICE_API_KEY="${{ secrets.PROD_SERVICE_API_KEY }}" \
+            --from-literal=GCP_PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}" \
+            --from-literal=PULUMI_ACCESS_TOKEN="${{ secrets.PULUMI_ACCESS_TOKEN }}" \
+            --from-literal=OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --from-literal=SHARED_SQL_ADMIN_USER="postgres" \
+            --from-literal=SHARED_SQL_ADMIN_PASSWORD="${{ secrets.PROD_SQL_PASSWORD }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy to production
         run: |
           kubectl apply -k k8s/overlays/production
+          kubectl rollout restart deployment/main-app -n tequity
+          kubectl rollout restart deployment/admin-app -n tequity
           kubectl rollout status deployment/main-app -n tequity --timeout=300s
           kubectl rollout status deployment/admin-app -n tequity --timeout=300s
 
