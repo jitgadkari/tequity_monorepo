@@ -308,8 +308,8 @@ async function runTenantMigrations(databaseUrl: string, tenantSlug: string) {
   try {
     // Run prisma db push to create tables (works better than migrate for new DBs)
     // We use db push since we don't need migration history for fresh tenant DBs
-    // Note: --skip-generate was removed in Prisma 7.x, use --accept-data-loss instead
-    execSync(`npx prisma db push --schema="${schemaPath}" --accept-data-loss`, {
+    // Pin to Prisma 6.x - v7 has breaking changes (removes datasource url from schema)
+    execSync(`npx prisma@6 db push --schema="${schemaPath}" --accept-data-loss --skip-generate`, {
       env: {
         ...process.env,
         DATABASE_URL: databaseUrl,
