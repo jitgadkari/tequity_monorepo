@@ -180,15 +180,31 @@ async function provisionPulumi(
     throw new Error(result.error || 'Pulumi provisioning failed');
   }
 
-  // Encrypt credentials
-  // For storage: Only use Cloud SQL Proxy socket URL when Cloud SQL Proxy is deployed
-  // Currently using direct TCP URL for all environments until Cloud SQL Proxy sidecar is added
-  // TODO: Switch to socket URL when Cloud SQL Auth Proxy is deployed as sidecar
-  // const dbUrlForStorage = process.env.DEPLOY_ENV === 'production' && process.env.USE_CLOUD_SQL_PROXY === 'true'
-  //   ? result.databaseUrl
-  //   : result.directDatabaseUrl || result.databaseUrl;
-  const dbUrlForStorage = result.directDatabaseUrl || result.databaseUrl;
-  const dbUrlForMigrations = result.directDatabaseUrl || result.databaseUrl;
+  // Debug logging to understand what URLs Pulumi returned
+  console.log(`[Pulumi] Result - databaseUrl available: ${!!result.databaseUrl}`);
+  console.log(`[Pulumi] Result - directDatabaseUrl available: ${!!result.directDatabaseUrl}`);
+  if (result.directDatabaseUrl) {
+    // Log URL format (redacted) to verify it's valid
+    const urlParts = result.directDatabaseUrl.split('@');
+    const hostPart = urlParts[1]?.split('/')[0] || 'unknown';
+    console.log(`[Pulumi] directDatabaseUrl host: ${hostPart}`);
+  }
+
+  // Validate directDatabaseUrl is a valid TCP URL (not containing 'undefined' or socket path)
+  const isValidDirectUrl = result.directDatabaseUrl &&
+    !result.directDatabaseUrl.includes('undefined') &&
+    !result.directDatabaseUrl.includes('/cloudsql/');
+
+  // For storage: Use direct TCP URL if valid, otherwise fall back to socket URL
+  // Note: Socket URL only works with Cloud SQL Proxy sidecar (not currently deployed)
+  const dbUrlForStorage = isValidDirectUrl
+    ? result.directDatabaseUrl
+    : result.databaseUrl;
+  const dbUrlForMigrations = isValidDirectUrl
+    ? result.directDatabaseUrl
+    : result.databaseUrl;
+
+  console.log(`[Provision] Storing ${isValidDirectUrl ? 'direct TCP' : 'socket (WILL NOT WORK without proxy)'} URL for tenant`);
   const encryptedDbUrl = dbUrlForStorage ? encrypt(dbUrlForStorage) : null;
   const encryptedServiceAccountKey = result.serviceAccountKeyJson
     ? encrypt(result.serviceAccountKeyJson)
