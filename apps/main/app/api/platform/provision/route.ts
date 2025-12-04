@@ -349,9 +349,20 @@ async function initializeTenantData(
       await runTenantMigrations(databaseUrl, tenantSlug);
     }
 
-    // Get tenant-specific database connection
-    const { getTenantDb } = await import('@/lib/db');
-    const tenantDb = await getTenantDb(tenantSlug);
+    // Use the provided database URL directly (TCP connection for provisioning)
+    // Don't use getTenantDb() here since it looks up the stored socket URL
+    // which won't work without Cloud SQL Proxy
+    const { PrismaClient } = await import('@prisma/tenant-client');
+
+    if (!databaseUrl) {
+      throw new Error('Database URL required for tenant initialization');
+    }
+
+    const tenantDb = new PrismaClient({
+      datasources: {
+        db: { url: databaseUrl },
+      },
+    });
 
     // 1. Create or find Tenant record in tenant DB (for multi-tenancy tracking)
     await tenantDb.tenant.upsert({
@@ -413,6 +424,9 @@ async function initializeTenantData(
     });
 
     console.log(`[Provision] Tenant data initialized successfully`);
+
+    // Disconnect the Prisma client to clean up connection
+    await tenantDb.$disconnect();
 
     return { userId: ownerUser.id, dataroomId: dataroom.id };
   } catch (error) {
