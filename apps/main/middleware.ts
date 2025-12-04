@@ -34,9 +34,21 @@ const publicApiPatterns = [
   /^\/api\/platform\/provision$/, // Provisioning can be called internally
 ];
 
+// Session-authenticated API patterns (require session cookie, not JWT)
+// These are endpoints that provide JWT tokens or user info based on session
+const sessionAuthApiPatterns = [
+  /^\/api\/[^/]+\/auth\/token$/, // Exchange session cookie for JWT token
+  /^\/api\/[^/]+\/auth\/me$/, // Get current user info (can use session or JWT)
+];
+
 // Check if path matches any public API pattern
 function isPublicApi(pathname: string): boolean {
   return publicApiPatterns.some((regex) => regex.test(pathname));
+}
+
+// Check if path is a session-authenticated API (requires session cookie, not JWT)
+function isSessionAuthApi(pathname: string): boolean {
+  return sessionAuthApiPatterns.some((regex) => regex.test(pathname));
 }
 
 // Check if path is a public route
@@ -76,6 +88,20 @@ export function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // Session-authenticated API routes (like /auth/token, /auth/me)
+    // These require a session cookie, not a JWT - they're used to GET the JWT
+    if (isSessionAuthApi(pathname)) {
+      if (!sessionCookie?.value) {
+        console.log(`[Middleware] Session auth API ${pathname} - no session cookie`);
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized', code: 'NO_SESSION' },
+          { status: 401 }
+        );
+      }
+      console.log(`[Middleware] Session auth API ${pathname} - session cookie present`);
+      return NextResponse.next();
+    }
+
     // Platform API routes - check session cookie
     if (pathname.startsWith('/api/auth/') || pathname.startsWith('/api/platform/')) {
       if (!sessionCookie?.value) {
@@ -90,6 +116,7 @@ export function middleware(request: NextRequest) {
     // Tenant API routes - check Authorization header
     const authHeader = request.headers.get('Authorization');
     if (!authHeader) {
+      console.log(`[Middleware] Tenant API ${pathname} - no auth header`);
       return NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'NO_AUTH_HEADER' },
         { status: 401 }
