@@ -106,10 +106,12 @@ async function provisionSupabase(
   }));
 
   // Update tenant with Supabase project details
+  // NOTE: Keep status as PROVISIONING until migrations complete
+  // The status will be set to ACTIVE after initializeTenantData() in the main POST handler
   await db.tenant.update({
     where: { id: tenantId },
     data: {
-      status: 'ACTIVE',
+      status: 'PROVISIONING', // Keep as PROVISIONING - will be set to ACTIVE after migrations
       provisioningProvider: 'SUPABASE',
       supabaseProjectId: credentials.projectId,
       supabaseProjectRef: project.ref,
@@ -127,6 +129,7 @@ async function provisionSupabase(
     success: true,
     message: 'Tenant provisioned successfully (Supabase)',
     tenantSlug,
+    databaseUrl: credentials.databaseUrl, // Pass to initializeTenantData for migrations
   };
 }
 
@@ -211,10 +214,12 @@ async function provisionPulumi(
     : null;
 
   // Update tenant with GCP provisioning details
+  // NOTE: Keep status as PROVISIONING until migrations complete
+  // The status will be set to ACTIVE after initializeTenantData() in the main POST handler
   await db.tenant.update({
     where: { id: tenantId },
     data: {
-      status: 'ACTIVE',
+      status: 'PROVISIONING', // Keep as PROVISIONING - will be set to ACTIVE after migrations
       provisioningProvider: 'GCP',
 
       // GCP Cloud SQL details
@@ -550,7 +555,14 @@ export async function POST(request: Request) {
     console.log(`Using provisioning provider: ${provider}`);
 
     try {
-      let result;
+      let result: {
+        success: boolean;
+        message: string;
+        tenantSlug?: string;
+        databaseUrl?: string;
+        resources?: unknown;
+        warning?: string;
+      };
 
       switch (provider) {
         case 'supabase':
@@ -575,6 +587,14 @@ export async function POST(request: Request) {
         // Pass the database URL for running migrations on the new database
         const databaseUrl = result.databaseUrl as string | undefined;
         await initializeTenantData(db, tenant, tenant.slug || tenantId, databaseUrl);
+
+        // NOW set status to ACTIVE after migrations and user creation complete
+        // This prevents race condition where frontend tries to auth before DB is ready
+        await db.tenant.update({
+          where: { id: tenantId },
+          data: { status: 'ACTIVE' },
+        });
+        console.log(`[Provision] Tenant ${tenant.slug || tenantId} status set to ACTIVE after migrations`);
       } else {
         console.log(`[Mock] Skipping tenant data initialization - mock mode uses master DB`);
       }
