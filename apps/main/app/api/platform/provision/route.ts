@@ -181,12 +181,13 @@ async function provisionPulumi(
   }
 
   // Encrypt credentials
-  // For local development, use directDatabaseUrl (public IP) instead of databaseUrl (Cloud SQL Proxy)
-  // In production with GKE, you would use databaseUrl with Cloud SQL Proxy
-  const dbUrlToUse = process.env.NODE_ENV === 'production'
+  // For storage: In production use Cloud SQL Proxy socket URL, in dev use direct TCP URL
+  // For migrations: Always use directDatabaseUrl (TCP) since Prisma CLI can't use socket
+  const dbUrlForStorage = process.env.NODE_ENV === 'production'
     ? result.databaseUrl
     : result.directDatabaseUrl || result.databaseUrl;
-  const encryptedDbUrl = dbUrlToUse ? encrypt(dbUrlToUse) : null;
+  const dbUrlForMigrations = result.directDatabaseUrl || result.databaseUrl;
+  const encryptedDbUrl = dbUrlForStorage ? encrypt(dbUrlForStorage) : null;
   const encryptedServiceAccountKey = result.serviceAccountKeyJson
     ? encrypt(result.serviceAccountKeyJson)
     : null;
@@ -235,7 +236,7 @@ async function provisionPulumi(
     success: true,
     message: 'Tenant provisioned successfully (GCP via Pulumi)',
     tenantSlug,
-    databaseUrl: dbUrlToUse, // Pass the database URL for migrations
+    databaseUrl: dbUrlForMigrations, // Use TCP URL for migrations (Prisma CLI can't use socket)
     resources: {
       cloudSqlInstance: result.cloudSqlInstanceName,
       storageBucket: result.storageBucketName,
