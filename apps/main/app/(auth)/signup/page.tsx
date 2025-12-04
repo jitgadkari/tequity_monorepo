@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { toast } from "sonner";
+import { clearLocalStorage } from "@/lib/client-auth";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -33,6 +34,9 @@ export default function SignupPage() {
       setError("Please enter a valid email address");
       return;
     }
+
+    // Clear any previous user's localStorage data before starting new signup
+    clearLocalStorage();
 
     setIsLoading(true);
 

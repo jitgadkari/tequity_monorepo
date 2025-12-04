@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { toast } from "sonner";
+import { clearLocalStorage } from "@/lib/client-auth";
 
 export default function SigninPage() {
   const [email, setEmail] = useState("");
@@ -19,6 +20,9 @@ export default function SigninPage() {
     e.preventDefault();
     setError("");
     setIsLoading(true);
+
+    // Clear any previous user's localStorage data before starting new login
+    clearLocalStorage();
 
     try {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

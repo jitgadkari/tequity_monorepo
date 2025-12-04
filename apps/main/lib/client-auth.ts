@@ -85,6 +85,14 @@ export function removeToken(): void {
 }
 
 /**
+ * Clear all localStorage data for a fresh auth session
+ * Call this before starting a new login/signup flow
+ */
+export function clearLocalStorage(): void {
+  removeToken()
+}
+
+/**
  * Store user info in localStorage
  */
 export function setUser(user: User): void {

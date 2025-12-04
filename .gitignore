@@ -64,3 +64,6 @@ drizzle/*.sql
 # Uploads (local dev)
 uploads/*
 !uploads/.gitkeep
+
+# Pulumi test tenant stack configs (auto-generated during provisioning tests)
+infrastructure/tenant-provisioner/Pulumi.tenant-test*.yaml

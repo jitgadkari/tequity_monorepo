@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getMasterDb } from '@/lib/master-db';
 import { generateOtp, getOtpExpiryDate, formatOtpForConsole } from '@tequity/utils';
+import { clearSession } from '@/lib/session';
 
 export async function POST(request: Request) {
   try {
+    // Clear any existing session before processing new signup
+    await clearSession();
+
     const { email } = await request.json();
     console.log('[SIGNUP] Request received for email:', email);
 
