@@ -73,8 +73,9 @@ COPY --from=builder /app/infrastructure/tenant-provisioner ./infrastructure/tena
 COPY --from=builder /app/infrastructure/shared-instance ./infrastructure/shared-instance
 
 # Copy tenant Prisma schema for database migrations during provisioning
-# The provisioning code expects schema at prisma/schema.prisma relative to /app
-COPY --from=builder /app/apps/main/prisma ./prisma
+# Next.js standalone runs from apps/main, so process.cwd() = /app/apps/main
+# The schema path resolves to /app/apps/main/prisma/schema.prisma
+COPY --from=builder /app/apps/main/prisma ./apps/main/prisma
 
 # Fix permissions for all files
 RUN chown -R nextjs:nodejs /app
