@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
-import { authFetch } from "@/lib/client-auth";
+import { authFetch, ensureToken } from "@/lib/client-auth";
 
 // Source interface from RAG response
 export interface Source {
@@ -80,6 +80,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Ensure we have a valid auth token before making API calls
+      const token = await ensureToken();
+      if (!token) {
+        console.warn('[ChatContext] No auth token available, using fallback');
+        // Fallback: Use tenant slug from URL as dataroom ID
+        const tenantSlug = window.location.pathname.split('/')[1];
+        if (tenantSlug && tenantSlug !== 'workspaces' && tenantSlug !== 'signin') {
+          console.log('[ChatContext] Using tenant slug as fallback dataroom ID:', tenantSlug);
+          setDataroomId(tenantSlug);
+        }
+        return;
+      }
+
       // Try to get from user's datarooms
       try {
         const response = await authFetch<{
@@ -93,14 +106,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           return;
         }
       } catch (error) {
-        console.error('Error loading dataroom ID from /auth/me:', error);
+        console.error('[ChatContext] Error loading dataroom ID from /auth/me:', error);
       }
 
       // Fallback: Use tenant slug from URL as dataroom ID (for mock mode)
       // This allows the chat to work even when tenant DB isn't fully provisioned
       const tenantSlug = window.location.pathname.split('/')[1];
       if (tenantSlug && tenantSlug !== 'workspaces' && tenantSlug !== 'signin') {
-        console.log('Using tenant slug as fallback dataroom ID:', tenantSlug);
+        console.log('[ChatContext] Using tenant slug as fallback dataroom ID:', tenantSlug);
         setDataroomId(tenantSlug);
         localStorage.setItem('tequity_dataroom_id', tenantSlug);
       }

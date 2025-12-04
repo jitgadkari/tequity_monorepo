@@ -93,6 +93,19 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
         return;
       }
 
+      // Ensure we have a token before making API calls
+      const token = await ensureToken();
+      if (!token) {
+        console.warn('[UploadDialog] No token available, cannot fetch datarooms');
+        // Fallback: use tenant slug as dataroom ID
+        const tenantSlug = getTenantSlug();
+        if (tenantSlug) {
+          console.log('[UploadDialog] Using tenant slug as fallback dataroom ID:', tenantSlug);
+          setDataroomId(tenantSlug);
+        }
+        return;
+      }
+
       // Otherwise, get from user's datarooms
       try {
         console.log('[UploadDialog] Fetching dataroom from /auth/me...');
@@ -109,6 +122,12 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
           localStorage.setItem('tequity_dataroom_id', firstDataroom.id);
         } else {
           console.warn('[UploadDialog] No datarooms found in response');
+          // Fallback: use tenant slug as dataroom ID
+          const tenantSlug = getTenantSlug();
+          if (tenantSlug) {
+            console.log('[UploadDialog] Using tenant slug as fallback dataroom ID:', tenantSlug);
+            setDataroomId(tenantSlug);
+          }
         }
       } catch (error) {
         console.error('[UploadDialog] Error loading dataroom ID:', error);
