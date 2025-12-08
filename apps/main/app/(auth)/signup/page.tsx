@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
@@ -15,6 +15,50 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Handle OAuth callback with token
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const mode = searchParams.get('mode');
+    const error = searchParams.get('error');
+
+    if (error) {
+      const errorMessages: Record<string, string> = {
+        'oauth_cancelled': 'Google sign-in was cancelled',
+        'configuration_error': 'OAuth configuration error. Please contact support.',
+        'no_code': 'Authorization code not received',
+        'token_exchange_failed': 'Failed to authenticate with Google',
+        'user_info_failed': 'Failed to get user information from Google',
+        'email_not_verified': 'Your Google email is not verified',
+        'account_exists': 'An account with this email already exists. Please sign in.',
+        'no_account': 'No account found. Click "Continue with Google" below to create your account.',
+        'server_error': 'An error occurred. Please try again.',
+      };
+      
+      const message = errorMessages[error] || 'Authentication failed';
+      
+      // Show different toast types based on error
+      if (error === 'no_account') {
+        toast.info(message, {
+          duration: 6000,
+          description: 'You tried to sign in, but need to create an account first.',
+        });
+      } else if (error === 'account_exists') {
+        toast.warning(message);
+      } else {
+        toast.error(message);
+      }
+      return;
+    }
+
+    if (token && mode) {
+      // Store token from OAuth callback
+      localStorage.setItem('tequity_auth_token', token);
+      toast.success(mode === 'signup' ? 'Account created successfully!' : 'Login successful!');
+      // Token is already in the URL, page will redirect automatically
+    }
+  }, [searchParams]);
 
   const validateEmail = (email: string): boolean => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -132,7 +176,10 @@ export default function SignupPage() {
   };
 
   const handleGoogleSignIn = () => {
-    console.log("Google sign-in clicked");
+    // Clear any previous user's localStorage data before starting Google OAuth
+    clearLocalStorage();
+    // Redirect to Google OAuth with signup mode
+    window.location.href = "/api/auth/google?mode=signup";
   };
 
   // Verification Step UI
@@ -292,7 +339,11 @@ export default function SignupPage() {
             <div className="mt-3">
               <button
                 onClick={handleGoogleSignIn}
-                className="w-full h-11 border border-gray-300 rounded-lg flex items-center justify-center gap-3 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 cursor-pointer"
+                className={`w-full h-11 border rounded-lg flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer ${
+                  searchParams.get('error') === 'no_account'
+                    ? 'border-blue-500 bg-blue-50 hover:bg-blue-100 hover:border-blue-600 ring-2 ring-blue-200 animate-pulse'
+                    : 'border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                }`}
               >
                 <div className="w-5 h-5 relative rounded-sm overflow-hidden">
                   <Image
@@ -302,7 +353,9 @@ export default function SignupPage() {
                     height={20}
                   />
                 </div>
-                <span className="text-base font-medium text-gray-700">
+                <span className={`text-base font-medium ${
+                  searchParams.get('error') === 'no_account' ? 'text-blue-700' : 'text-gray-700'
+                }`}>
                   Continue with Google
                 </span>
               </button>

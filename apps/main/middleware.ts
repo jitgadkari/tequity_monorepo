@@ -25,6 +25,7 @@ const platformProtectedRoutes = [
 // Public API patterns (no auth required)
 const publicApiPatterns = [
   /^\/api\/auth\/(signup|signin|verify-otp|session|logout|resend-otp)$/,
+  /^\/api\/auth\/google/, // Google OAuth routes (both /google and /google/callback)
   /^\/api\/[^/]+\/auth\/signup$/,
   /^\/api\/[^/]+\/auth\/verify-signup$/,
   /^\/api\/[^/]+\/auth\/send-code$/,

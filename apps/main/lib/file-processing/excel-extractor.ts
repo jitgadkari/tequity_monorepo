@@ -24,54 +24,81 @@ export function extractTextFromExcel(buffer: Buffer, options: ExcelExtractionOpt
   console.log('[Excel Extractor] Reading Excel file')
 
   try {
-    const workbook = XLSX.read(buffer, { type: 'buffer' })
+    // Try with different read options for better compatibility
+    let workbook: XLSX.WorkBook
+    try {
+      workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, cellNF: false, cellText: false })
+    } catch (firstError) {
+      console.warn('[Excel Extractor] First read attempt failed, trying with raw option:', firstError)
+      // Fallback: try with raw option for corrupted files
+      workbook = XLSX.read(buffer, { type: 'buffer', raw: true })
+    }
+    
     console.log(`[Excel Extractor] Loaded ${workbook.SheetNames.length} sheets`)
 
     const texts: string[] = []
 
     for (const sheetName of workbook.SheetNames) {
-      const worksheet = workbook.Sheets[sheetName]
-      const range = worksheet['!ref'] ? XLSX.utils.decode_range(worksheet['!ref']) : null
+      try {
+        const worksheet = workbook.Sheets[sheetName]
+        const range = worksheet['!ref'] ? XLSX.utils.decode_range(worksheet['!ref']) : null
 
-      if (!range) continue
-
-      // Convert to JSON for row extraction
-      const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
-        defval: '',
-        range: {
-          s: range.s,
-          e: {
-            r: Math.min(range.e.r, range.s.r + maxRowsPerSheet - 1),
-            c: range.e.c,
-          },
-        },
-      })
-
-      console.log(`[Excel Extractor] Processing sheet: ${sheetName} with ${jsonData.length} rows`)
-
-      let rowCount = 0
-      for (const row of jsonData) {
-        // Format: "Sheet: {name} | col1: val1, col2: val2, ..."
-        // Matches Python format exactly
-        const rowStr = `Sheet: ${sheetName} | ` +
-          Object.entries(row)
-            .filter(([, val]) => val !== '' && val !== null && val !== undefined)
-            .map(([col, val]) => `${col}: ${val}`)
-            .join(', ')
-
-        if (rowStr.length > `Sheet: ${sheetName} | `.length) {
-          texts.push(rowStr)
-          rowCount++
+        if (!range) {
+          console.warn(`[Excel Extractor] No range found for sheet: ${sheetName}`)
+          continue
         }
+
+        // Convert to JSON for row extraction
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+          defval: '',
+          range: {
+            s: range.s,
+            e: {
+              r: Math.min(range.e.r, range.s.r + maxRowsPerSheet - 1),
+              c: range.e.c,
+            },
+          },
+        })
+
+        console.log(`[Excel Extractor] Processing sheet: ${sheetName} with ${jsonData.length} rows`)
+
+        let rowCount = 0
+        for (const row of jsonData) {
+          // Format: "Sheet: {name} | col1: val1, col2: val2, ..."
+          // Matches Python format exactly
+          const rowStr = `Sheet: ${sheetName} | ` +
+            Object.entries(row)
+              .filter(([, val]) => val !== '' && val !== null && val !== undefined)
+              .map(([col, val]) => `${col}: ${val}`)
+              .join(', ')
+
+          if (rowStr.length > `Sheet: ${sheetName} | `.length) {
+            texts.push(rowStr)
+            rowCount++
+          }
+        }
+        console.log(`[Excel Extractor] Extracted ${rowCount} rows from sheet: ${sheetName}`)
+      } catch (sheetError) {
+        console.error(`[Excel Extractor] Error processing sheet ${sheetName}:`, sheetError)
+        // Continue with other sheets even if one fails
+        continue
       }
-      console.log(`[Excel Extractor] Extracted ${rowCount} rows from sheet: ${sheetName}`)
     }
 
     console.log(`[Excel Extractor] Total row records extracted: ${texts.length}`)
+    
+    // If no text was extracted, return a minimal record so the file is still indexed
+    if (texts.length === 0) {
+      console.warn('[Excel Extractor] No text extracted, returning minimal record')
+      return ['Sheet: Unknown | Content: Excel file with no extractable text']
+    }
+    
     return texts
   } catch (error) {
     console.error('[Excel Extractor] Error:', error)
-    throw new Error(`Failed to extract Excel content: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    // Don't throw - return a minimal record so upload can still succeed
+    console.warn('[Excel Extractor] Returning minimal record due to extraction failure')
+    return ['Sheet: Error | Content: Excel file could not be fully processed']
   }
 }
 
@@ -84,6 +111,12 @@ export function extractTextFromCsv(buffer: Buffer): string[] {
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer' })
     const sheetName = workbook.SheetNames[0]
+    
+    if (!sheetName) {
+      console.warn('[CSV Extractor] No sheets found in CSV')
+      return ['Sheet: CSV | Content: Empty CSV file']
+    }
+    
     const worksheet = workbook.Sheets[sheetName]
 
     const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
@@ -105,10 +138,19 @@ export function extractTextFromCsv(buffer: Buffer): string[] {
     }
 
     console.log(`[CSV Extractor] Extracted ${texts.length} rows`)
+    
+    // If no text was extracted, return a minimal record
+    if (texts.length === 0) {
+      console.warn('[CSV Extractor] No text extracted, returning minimal record')
+      return ['Sheet: CSV | Content: CSV file with no extractable text']
+    }
+    
     return texts
   } catch (error) {
     console.error('[CSV Extractor] Error:', error)
-    throw new Error(`Failed to extract CSV content: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    // Don't throw - return a minimal record so upload can still succeed
+    console.warn('[CSV Extractor] Returning minimal record due to extraction failure')
+    return ['Sheet: CSV | Content: CSV file could not be fully processed']
   }
 }
 

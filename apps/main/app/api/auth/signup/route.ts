@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getMasterDb } from '@/lib/master-db';
 import { generateOtp, getOtpExpiryDate, formatOtpForConsole } from '@tequity/utils';
 import { clearSession } from '@/lib/session';
+import { sendOtpEmail } from '@/lib/email';
 
 export async function POST(request: Request) {
   try {
@@ -78,8 +79,15 @@ export async function POST(request: Request) {
       expiresAt: verificationToken.expiresAt,
     });
 
-    // Log OTP to console (development)
-    formatOtpForConsole(normalizedEmail, otp);
+    // Send OTP email
+    try {
+      await sendOtpEmail(normalizedEmail, otp, 'signup');
+      console.log('[SIGNUP] OTP email sent successfully to:', normalizedEmail);
+    } catch (emailError) {
+      console.error('[SIGNUP] Failed to send OTP email:', emailError);
+      // Still log to console as fallback
+      formatOtpForConsole(normalizedEmail, otp);
+    }
 
     return NextResponse.json({
       success: true,

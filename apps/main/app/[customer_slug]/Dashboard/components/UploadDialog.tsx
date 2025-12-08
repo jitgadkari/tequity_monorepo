@@ -17,6 +17,7 @@ import Image from "next/image";
 import { UploadGraphic } from "./UploadGraphic";
 import { toast } from "sonner";
 import { getToken, getTenantSlug, authFetch, ensureToken } from "@/lib/client-auth";
+import { useGoogleDrivePicker } from "@/hooks/useGoogleDrivePicker";
 
 // File type icons - using public folder paths
 const fileIcons: Record<string, string> = {
@@ -80,6 +81,62 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [dataroomId, setDataroomId] = useState<string | null>(null);
   const [uploadedFileIds, setUploadedFileIds] = useState<Record<number, string>>({});
+
+  // Google Drive Picker configuration - removed, now using env vars in hook
+
+  // Handle files selected from Google Drive
+  const handleDriveFilesSelected = async (driveFiles: any[], accessToken: string) => {
+    console.log('[UploadDialog] Google Drive files selected:', driveFiles);
+    toast.success(`Selected ${driveFiles.length} file(s) from Google Drive`);
+
+    // Convert Drive files metadata to File-like objects for upload
+    // We'll need to download the files from Google Drive and upload them to our backend
+    const filePromises = driveFiles.map(async (driveFile) => {
+      try {
+        // Download file from Google Drive using fetch with proper binary handling
+        const downloadUrl = `https://www.googleapis.com/drive/v3/files/${driveFile.id}?alt=media`;
+        const response = await fetch(downloadUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to download file: ${response.statusText}`);
+        }
+
+        // Get the file as a blob (binary data)
+        const blob = await response.blob();
+        const file = new File([blob], driveFile.name, { type: driveFile.mimeType });
+        return file;
+      } catch (error) {
+        console.error('[UploadDialog] Error downloading file from Google Drive:', error);
+        toast.error(`Failed to download: ${driveFile.name}`);
+        return null;
+      }
+    });
+
+    const downloadedFiles = (await Promise.all(filePromises)).filter(Boolean) as File[];
+
+    if (downloadedFiles.length > 0) {
+      setFiles((prevFiles) => [...prevFiles, ...downloadedFiles]);
+      // Automatically start uploading downloaded files
+      setTimeout(() => startUpload(downloadedFiles, files.length), 100);
+    }
+  };
+
+  // Initialize Google Drive Picker with new simplified API
+  const { openPicker, isReady, isLoading, error: pickerError } = useGoogleDrivePicker(
+    handleDriveFilesSelected
+  );
+
+  // Show picker errors
+  useEffect(() => {
+    if (pickerError) {
+      console.error('[UploadDialog] Google Drive Picker error:', pickerError);
+      toast.error(pickerError);
+    }
+  }, [pickerError]);
 
   // Load dataroom ID on mount
   useEffect(() => {
@@ -482,6 +539,27 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
       </DialogTrigger>
       <DialogContent className="w-[calc(100vw-32px)] max-w-[352px] h-[400px] sm:w-[560px] sm:max-w-[560px] p-[16px] border border-[#E2E8F0] dark:border-[#27272A] shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1),0px_2px_4px_-2px_rgba(0,0,0,0.1)] flex flex-col">
         <DialogTitle className="sr-only">Upload Files</DialogTitle>
+        
+        {/* Hidden file inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={handleFileChange}
+          className="hidden"
+          accept="*/*"
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          // @ts-ignore - webkitdirectory is not in the types but is supported
+          webkitdirectory="true"
+          directory="true"
+          multiple
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        
         <div className="flex flex-col items-center w-full h-full">
           {/* Header */}
           <div className="flex flex-row items-center gap-3 w-full h-9 mb-0 shrink-0">
@@ -495,61 +573,64 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
 
           {/* Upload Area - Only show when no files */}
           {files.length === 0 && (
-            <div
-              className="flex flex-col justify-center items-center flex-1 w-full p-6 gap-5 rounded-xl cursor-pointer"
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => handleButtonClick("files")}
-            >
-              {/* Graphic - Custom File Icons */}
-              <div
-                className={`relative flex items-center justify-center ${
-                  isDragging ? "opacity-70" : ""
-                }`}
+            <div className="flex flex-col justify-center items-center flex-1 w-full p-6 gap-5 rounded-xl">
+              {/* Graphic - Custom File Icons - Clickable */}
+              <button
+                type="button"
+                onClick={() => handleButtonClick("files")}
+                className="relative flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
               >
                 <UploadGraphic />
-              </div>
+              </button>
 
               {/* Text */}
               <div className="flex flex-col justify-center items-center gap-1.5 w-full">
                 <p className="font-['Inter'] font-medium text-2xl leading-8 tracking-[-0.006em] text-[#09090B] dark:text-white">
-                  {isDragging ? (
-                    "Drop files here"
-                  ) : (
-                    <>
-                      <span className="sm:hidden">Select or Paste</span>
-                      <span className="hidden sm:inline">Drop or Select</span>
-                    </>
-                  )}
+                  Upload Files
                 </p>
                 <p className="font-['Inter'] font-normal text-sm leading-5 text-center text-[#71717A] w-full dark:text-white">
-                  {isDragging
-                    ? "Release to upload"
-                    : "Files, Folders, or .zip Archives"}
+                  Click above to browse files or folders
                 </p>
+              </div>
+
+              {/* Upload Options */}
+              <div className="flex flex-col gap-2 w-full">
+                <div className="flex gap-2 w-full">
+                  <Button
+                    onClick={() => handleButtonClick("files")}
+                    variant="outline"
+                    className="flex-1 flex items-center justify-center gap-2 h-10"
+                  >
+                    <FiUploadCloud className="h-4 w-4" />
+                    Files
+                  </Button>
+                  <Button
+                    onClick={() => handleButtonClick("folder")}
+                    variant="outline"
+                    className="flex-1 flex items-center justify-center gap-2 h-10"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    Folder
+                  </Button>
+                </div>
+
+                {/* Google Drive Button */}
+                <Button
+                  onClick={() => openPicker()}
+                  disabled={!isReady}
+                  variant="outline"
+                  className="flex items-center justify-center gap-2 h-10 border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950 text-blue-600 dark:text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7.71 3.5L1.15 15l3.42 6.5L11.13 10 7.71 3.5zm6.58 0L8.23 15l3.42 6.5L18.21 10l-3.92-6.5zM1.5 21.5L4.92 15 8.34 21.5H1.5zm13.1 0L11.18 15l3.42 6.5h-0.1zm6.4-15L15.04 15l3.42 6.5L24.5 10l-3.5-3.5z"/>
+                  </svg>
+                  {isReady ? 'Google Drive' : 'Loading...'}
+                </Button>
               </div>
             </div>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            onChange={handleFileChange}
-            className="hidden"
-            accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.svg,.mp4,.mov,.mp3,.txt,.zip"
-          />
-          <input
-            ref={folderInputRef}
-            type="file"
-            multiple
-            onChange={handleFileChange}
-            className="hidden"
-            {...({
-              webkitdirectory: "",
-              directory: "",
-            } as React.InputHTMLAttributes<HTMLInputElement>)}
-          />
 
           {files.length > 0 && (
             <div className="flex flex-col gap-[16px] w-full flex-1 overflow-hidden">
@@ -654,18 +735,15 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
                 {files.length < 6 && (
                   <button
                     type="button"
-                    onClick={() => handleButtonClick("files")}
-                    className="flex flex-col justify-center items-center p-[12px] gap-[8px] bg-[#FAFAFA] rounded-xl hover:bg-gray-200 transition-colors h-[140px] cursor-pointer border border-[#E2E8F0] dark:bg-[#18181B] dark:border-[#3F3F46] dark:hover:bg-[#3F3F46]/60 hover:border-[#CBD5F6] dark:hover:border-[#52525B]"
+                    onClick={() => openPicker()}
+                    disabled={!isReady}
+                    className="flex flex-col justify-center items-center p-[12px] gap-[8px] bg-[#FAFAFA] rounded-xl hover:bg-gray-200 transition-colors h-[140px] cursor-pointer border border-[#E2E8F0] dark:bg-[#18181B] dark:border-[#3F3F46] dark:hover:bg-[#3F3F46]/60 hover:border-[#CBD5F6] dark:hover:border-[#52525B] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Image
-                      src="/uploadModal/Icon.svg"
-                      alt="Add files"
-                      width={40}
-                      height={40}
-                      className="w-10 h-10"
-                    />
+                    <svg className="w-10 h-10 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7.71 3.5L1.15 15l3.42 6.5L11.13 10 7.71 3.5zm6.58 0L8.23 15l3.42 6.5L18.21 10l-3.92-6.5zM1.5 21.5L4.92 15 8.34 21.5H1.5zm13.1 0L11.18 15l3.42 6.5h-0.1zm6.4-15L15.04 15l3.42 6.5L24.5 10l-3.5-3.5z"/>
+                    </svg>
                     <p className="font-['Inter'] font-normal text-[14px] leading-[20px] text-[#020617] dark:text-white">
-                      Add files
+                      Add from Drive
                     </p>
                   </button>
                 )}

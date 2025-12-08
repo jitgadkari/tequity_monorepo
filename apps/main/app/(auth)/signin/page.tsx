@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
@@ -15,6 +15,37 @@ export default function SigninPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Handle OAuth callback with token
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const mode = searchParams.get('mode');
+    const error = searchParams.get('error');
+
+    if (error) {
+      const errorMessages: Record<string, string> = {
+        'oauth_cancelled': 'Google sign-in was cancelled',
+        'configuration_error': 'OAuth configuration error. Please contact support.',
+        'no_code': 'Authorization code not received',
+        'token_exchange_failed': 'Failed to authenticate with Google',
+        'user_info_failed': 'Failed to get user information from Google',
+        'email_not_verified': 'Your Google email is not verified',
+        'account_exists': 'An account with this email already exists. Please sign in.',
+        'no_account': 'No account found with this email. Please sign up first.',
+        'server_error': 'An error occurred. Please try again.',
+      };
+      toast.error(errorMessages[error] || 'Authentication failed');
+      return;
+    }
+
+    if (token && mode) {
+      // Store token from OAuth callback
+      localStorage.setItem('tequity_auth_token', token);
+      toast.success(mode === 'signup' ? 'Account created successfully!' : 'Login successful!');
+      // Token is already in the URL, page will redirect automatically
+    }
+  }, [searchParams]);
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,7 +160,10 @@ export default function SigninPage() {
   };
 
   const handleGoogleSignIn = () => {
-    console.log("Google sign-in clicked");
+    // Clear any previous user's localStorage data before starting Google OAuth
+    clearLocalStorage();
+    // Redirect to Google OAuth with signin mode
+    window.location.href = "/api/auth/google?mode=signin";
   };
 
   if (step === "otp") {

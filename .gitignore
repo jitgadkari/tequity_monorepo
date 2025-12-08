@@ -67,3 +67,6 @@ uploads/*
 
 # Pulumi test tenant stack configs (auto-generated during provisioning tests)
 infrastructure/tenant-provisioner/Pulumi.tenant-test*.yaml
+
+# Local documentation (not committed to repo)
+docs/local/

@@ -351,6 +351,13 @@ export async function DELETE(
       return ApiErrors.forbidden()
     }
 
+    // Prevent deletion of files that are currently being processed
+    if (file.status === 'processing' || file.status === 'embedding') {
+      return ApiErrors.validationError(
+        'Cannot delete file while it is being processed. Please wait for processing to complete.'
+      )
+    }
+
     // Delete physical file
     try {
       await unlink(file.storageUrl)
