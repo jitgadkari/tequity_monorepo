@@ -258,6 +258,78 @@ export async function searchSimilar(
 }
 
 /**
+ * Search for exact keyword matches (e.g., invoice numbers, customer IDs)
+ * This bypasses vector search and uses direct text matching
+ * @param prisma - Tenant-specific Prisma client
+ */
+export async function searchByKeyword(
+  prisma: TenantPrismaClient,
+  keywords: string[],
+  options: {
+    limit?: number
+  } = {}
+): Promise<SearchResult[]> {
+  if (!keywords || keywords.length === 0) {
+    return []
+  }
+
+  const { limit = 5 } = options
+
+  console.log(`[VectorStore] Exact keyword search for: ${keywords.join(', ')}`)
+
+  try {
+    const results: SearchResult[] = []
+
+    for (const keyword of keywords) {
+      // Use ILIKE for case-insensitive exact match
+      const matches = await prisma.$queryRaw<
+        Array<{
+          id: string
+          fileId: string | null
+          content: string
+          metadata: Prisma.JsonValue
+        }>
+      >`
+        SELECT
+          id,
+          "fileId",
+          content,
+          metadata
+        FROM "DocumentEmbedding"
+        WHERE content ILIKE ${`%${keyword}%`}
+        LIMIT ${limit}
+      `
+
+      // Map to SearchResult format with high similarity score
+      const mapped = matches.map((row) => {
+        const metadata = (row.metadata as Record<string, unknown>) || {}
+        return {
+          id: row.id,
+          pointId: row.id,
+          content: row.content,
+          text: row.content,
+          fileId: row.fileId || undefined,
+          category: metadata.category as string | undefined,
+          sourceFile: metadata.sourceFile as string | undefined,
+          rowNumber: metadata.rowNumber as number | undefined,
+          sheetName: metadata.sheetName as string | undefined,
+          similarity: 1.0, // Perfect match
+          distance: 0,
+        }
+      })
+
+      results.push(...mapped)
+    }
+
+    console.log(`[VectorStore] Keyword search found ${results.length} exact matches`)
+    return results
+  } catch (error) {
+    console.error('[VectorStore] Keyword search error:', error)
+    return []
+  }
+}
+
+/**
  * Multi-file search with category prioritization
  * Matches Python: search_pgvector() with multi_file_search
  * @param prisma - Tenant-specific Prisma client

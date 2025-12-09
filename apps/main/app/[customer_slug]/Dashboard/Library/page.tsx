@@ -482,7 +482,7 @@ function LibraryContent({
 
   const handleFolderSelect = useCallback(
     (folder: { id: string; name: string; fileCount: number }) => {
-      console.log("Folder selected:", folder);
+      console.log("Folder (category) selected:", folder);
 
       // Add to recently visited
       setRecentlyVisited((prev) => {
@@ -500,48 +500,17 @@ function LibraryContent({
         return [newItem, ...filtered].slice(0, 8); // Keep only 8 most recent
       });
 
-      // Create sample files for the folder
-      const sampleFiles: FileItem[] = [
-        {
-          id: `${folder.id}-1`,
-          name: "Q4 Financial Summary.pdf",
-          type: "PDF",
-          size: 1024000,
-        },
-        {
-          id: `${folder.id}-2`,
-          name: "Revenue Analysis.xlsx",
-          type: "XLSX",
-          size: 512000,
-        },
-        {
-          id: `${folder.id}-3`,
-          name: "Marketing Strategy.pptx",
-          type: "PPTX",
-          size: 2048000,
-        },
-        {
-          id: `${folder.id}-4`,
-          name: "Customer Data.csv",
-          type: "CSV",
-          size: 256000,
-        },
-        {
-          id: `${folder.id}-5`,
-          name: "Project Timeline.docx",
-          type: "DOCX",
-          size: 768000,
-        },
-      ];
+      // Filter files by category (folder.id is the category name)
+      const categoryFiles = files.filter((file) => file.category === folder.id);
 
       // Set the folder view state
       setCurrentFolder({
         ...folder,
-        files: sampleFiles,
+        files: categoryFiles,
       });
       setIsViewingFolder(true);
     },
-    []
+    [files]
   );
 
   // Listen for custom event to open PDF viewer from sidebar
@@ -2120,6 +2089,7 @@ export default function LibraryPage() {
     name: f.name,
     type: getFileTypeFromMimetype(f.type) as FileItem['type'],
     size: f.size || 0,
+    category: f.category, // Include category for filtering
     uploadedAt: f.createdAt || new Date(),
   }));
 

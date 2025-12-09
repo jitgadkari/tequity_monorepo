@@ -29,7 +29,7 @@ interface FilesContextType {
   setFiles: (files: FileItem[]) => void;
   setFolders: (folders: FolderItem[]) => void;
   loadFiles: () => Promise<void>;
-  loadFolders: () => Promise<void>;
+  loadFolders: () => void;
   addFiles: (newFiles: FileItem[]) => void;
   deleteFile: (fileId: string) => Promise<boolean>;
 }
@@ -150,41 +150,46 @@ export function FilesProvider({ children }: { children: ReactNode }) {
     }
   }, [dataroomId]);
 
-  // Load folders from backend
-  const loadFolders = useCallback(async () => {
-    if (!dataroomId) return;
+  // Derive folders (categories) from files
+  const loadFolders = useCallback(() => {
+    console.log('[FilesContext] loadFolders called, deriving categories from files');
+    
+    // Group files by category
+    const categoryMap = new Map<string, number>();
+    
+    files.forEach((file) => {
+      const category = file.category || 'Uncategorized';
+      categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+    });
 
-    try {
-      const response = await authFetch<{
-        folders: Array<{
-          id: string;
-          name: string;
-          _count?: { files: number };
-        }>;
-      }>(`/folders?dataroomId=${dataroomId}`);
+    // Convert to FolderItem array
+    const loadedFolders: FolderItem[] = Array.from(categoryMap.entries()).map(([category, count]) => ({
+      id: category, // Use category name as ID
+      name: category,
+      fileCount: count,
+    }));
 
-      if (response.success && response.data?.folders) {
-        const loadedFolders: FolderItem[] = response.data.folders.map((folder) => ({
-          id: folder.id,
-          name: folder.name,
-          fileCount: folder._count?.files || 0,
-        }));
-        setFolders(loadedFolders);
-      }
-    } catch (error) {
-      console.error('Error loading folders:', error);
-    }
-  }, [dataroomId]);
+    // Sort by name
+    loadedFolders.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Load files and folders when dataroomId is available
+    console.log('[FilesContext] Derived', loadedFolders.length, 'categories from', files.length, 'files');
+    setFolders(loadedFolders);
+  }, [files]);
+
+  // Load files when dataroomId is available
   useEffect(() => {
     console.log('[FilesContext] dataroomId changed:', dataroomId);
     if (dataroomId) {
-      console.log('[FilesContext] Loading files and folders...');
+      console.log('[FilesContext] Loading files...');
       loadFiles();
-      loadFolders();
     }
-  }, [dataroomId, loadFiles, loadFolders]);
+  }, [dataroomId, loadFiles]);
+
+  // Derive folders (categories) whenever files change
+  useEffect(() => {
+    console.log('[FilesContext] files changed, updating categories');
+    loadFolders();
+  }, [files, loadFolders]);
 
   // Add files to the list (after upload)
   const addFiles = useCallback((newFiles: FileItem[]) => {

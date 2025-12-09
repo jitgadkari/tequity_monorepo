@@ -153,8 +153,15 @@ export async function getTenantCredentials(
   }
 
   const supabaseUrl = `https://${projectRef}.supabase.co`;
-  const dbHost = `db.${projectRef}.supabase.co`;
-  const databaseUrl = `postgresql://postgres:${dbPassword}@${dbHost}:5432/postgres`;
+  
+  // Use Transaction Pooler URL for serverless environments (Next.js)
+  // Format: postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+  // Note: We default to aws-0 as it's the standard, but some regions/projects might use aws-1.
+  // Ideally this should be configurable or fetched from API if possible.
+  const poolerHost = `aws-0-${status.region}.pooler.supabase.com`;
+  
+  // Transaction pooler requires username format: postgres.{projectRef}
+  const databaseUrl = `postgresql://postgres.${projectRef}:${dbPassword}@${poolerHost}:6543/postgres?sslmode=require`;
 
   return {
     projectId: status.id,

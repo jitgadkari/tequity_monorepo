@@ -55,12 +55,82 @@ Category:`
  * Matches Python: get_basic_qa_prompt()
  */
 export function getBasicQAPrompt(context: string, query: string): string {
-  return `You are a helpful financial assistant. Use the following context to answer the user's question accurately and comprehensively. If the answer is not in the context, say "I might not have the files containing that information."
+  return `You are a helpful financial assistant analyzing financial data. Answer the user's question using ONLY the information provided in the context below.
+
+IMPORTANT INSTRUCTIONS:
+1. The context contains actual data from the user's financial files
+2. Use the data in the context to provide specific, accurate answers
+3. Include relevant numbers, dates, and details from the context
+4. ONLY say you don't have the information if the context is completely empty or contains no relevant data for the specific question
+5. If you find relevant data in the context, you MUST use it to answer the question
 
 Context:
 ${context}
 
 Question: ${query}
+
+Answer:`
+}
+
+/**
+ * Generate prompt for exact lookups (invoice numbers, customer IDs, etc.)
+ */
+export function getExactLookupPrompt(
+  context: string,
+  query: string,
+  keywords: string[]
+): string {
+  return `You are a financial data assistant. The user is looking for SPECIFIC information about: ${keywords.join(', ')}.
+
+The context below contains data from financial documents. Your task is to find and present the EXACT details requested.
+
+Context:
+${context}
+
+Question: ${query}
+
+INSTRUCTIONS:
+1. Look for the exact identifiers mentioned: ${keywords.join(', ')}
+2. If found, provide ALL available details for those specific records
+3. Format the answer clearly with field names and values
+4. If NOT found in the context, explicitly state "The requested ${keywords.join(', ')} was not found in the available data"
+5. Do NOT make up or infer information
+
+Answer:`
+}
+
+/**
+ * Generate prompt for aggregation queries (sum, average, max, etc.)
+ */
+export function getAggregationPrompt(
+  context: string,
+  query: string,
+  aggregationType: string,
+  groupByField: string | null
+): string {
+  return `You are a financial data analyst. The user is asking for AGGREGATED analysis.
+
+Context (Raw Data):
+${context}
+
+Question: ${query}
+
+CRITICAL INSTRUCTIONS:
+1. This query requires ${aggregationType}${groupByField ? ` by ${groupByField}` : ''} calculation
+2. Analyze ALL the data provided in the context
+3. Group the data by ${groupByField || 'the relevant field'}
+4. Calculate the ${aggregationType} for each group
+5. Present results in a clear table or list format
+6. Show your calculations/reasoning
+7. Identify the ${aggregationType === 'max' ? 'highest' : aggregationType === 'min' ? 'lowest' : 'top'} result
+
+Example format:
+${groupByField ? `By ${groupByField}:
+- [${groupByField} 1]: [value] ([calculation if relevant])
+- [${groupByField} 2]: [value] ([calculation if relevant])
+
+${aggregationType === 'max' ? 'Highest' : aggregationType === 'min' ? 'Lowest' : 'Result'}: [answer]` : '[Calculated result with explanation]'}
+
 Answer:`
 }
 
