@@ -38,9 +38,13 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
   isMock: boolean;
 } | null> {
   try {
+    console.log(`[TenantDB] ========================================`);
     console.log(`[TenantDB] Getting credentials for tenant: ${tenantSlug}`);
+    console.log(`[TenantDB] Step 1: Connecting to master database`);
     const db = getMasterDb();
+    console.log(`[TenantDB] Step 2: Master DB connection obtained, querying tenant table`);
 
+    console.log(`[TenantDB] Step 3: Executing findUnique query on master DB`);
     const tenant = await db.tenant.findUnique({
       where: { slug: tenantSlug },
       select: {
@@ -52,6 +56,7 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
         provisioningProvider: true,
       },
     });
+    console.log(`[TenantDB] Step 4: Master DB query completed`);
 
     console.log(
       `[TenantDB] Tenant lookup result:`,
@@ -69,7 +74,8 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
     );
 
     if (!tenant) {
-      console.warn(`[TenantDB] Tenant not found: ${tenantSlug}`);
+      console.warn(`[TenantDB] ❌ Tenant not found in master DB: ${tenantSlug}`);
+      console.log(`[TenantDB] ========================================`);
       return null;
     }
 
@@ -78,7 +84,8 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
       tenant.databaseUrlEncrypted === "mock_encrypted_url" ||
       tenant.supabaseProjectId?.startsWith("mock_")
     ) {
-      console.log(`[TenantDB] Using mock mode for tenant: ${tenantSlug}`);
+      console.log(`[TenantDB] ✓ Using mock mode for tenant: ${tenantSlug}`);
+      console.log(`[TenantDB] ========================================`);
       return {
         databaseUrl: process.env.DATABASE_URL || "",
         isMock: true,
@@ -87,27 +94,39 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
 
     // Decrypt the real database URL
     if (!tenant.databaseUrlEncrypted) {
-      console.warn(`[TenantDB] No database URL for tenant: ${tenantSlug}`);
+      console.warn(`[TenantDB] ❌ No database URL for tenant: ${tenantSlug}`);
+      console.log(`[TenantDB] ========================================`);
       return null;
     }
 
-    console.log(`[TenantDB] Decrypting database URL for tenant: ${tenantSlug}`);
+    console.log(`[TenantDB] Step 5: Decrypting database URL for tenant: ${tenantSlug}`);
+    console.log(`[TenantDB] Encrypted URL length: ${tenant.databaseUrlEncrypted.length} characters`);
     const databaseUrl = decrypt(tenant.databaseUrlEncrypted);
+    console.log(`[TenantDB] Step 6: Decryption successful`);
 
     // Log URL format (redacted for security) to help debug connection issues
     const urlParts = databaseUrl.split("@");
+    const protocol = databaseUrl.split("://")[0] || "unknown";
     const hostPart = urlParts[1]?.split("/")[0] || "unknown";
     const dbPart = urlParts[1]?.split("/")[1]?.split("?")[0] || "unknown";
-    console.log(
-      `[TenantDB] Decrypted URL - host: ${hostPart}, database: ${dbPart}`
-    );
+    const queryParams = urlParts[1]?.split("?")[1] || "none";
+    
+    console.log(`[TenantDB] ========================================`);
+    console.log(`[TenantDB] Decrypted Connection Details:`);
+    console.log(`[TenantDB]   Protocol: ${protocol}`);
+    console.log(`[TenantDB]   Host: ${hostPart}`);
+    console.log(`[TenantDB]   Database: ${dbPart}`);
+    console.log(`[TenantDB]   Query Params: ${queryParams}`);
+    console.log(`[TenantDB]   Full URL Length: ${databaseUrl.length} characters`);
+    console.log(`[TenantDB] ========================================`);
 
     return { databaseUrl, isMock: false };
   } catch (error) {
     console.error(
-      `[TenantDB] Error getting tenant credentials for ${tenantSlug}:`,
+      `[TenantDB] ❌ Error getting tenant credentials for ${tenantSlug}:`,
       error
     );
+    console.log(`[TenantDB] ========================================`);
     return null;
   }
 }
@@ -120,12 +139,15 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
  * @returns PrismaClient instance connected to tenant's database
  */
 export async function getTenantDb(tenantSlug: string): Promise<any> {
-  console.log(`[TenantDB] getTenantDb called for: ${tenantSlug}`);
+  console.log(`[TenantDB] ========================================`);
+  console.log(`[TenantDB] getTenantDb() called for: ${tenantSlug}`);
+  console.log(`[TenantDB] Timestamp: ${new Date().toISOString()}`);
 
   // Check if we already have a cached client for this tenant
   const cached = tenantClients.get(tenantSlug);
   if (cached) {
-    console.log(`[TenantDB] Using cached client for: ${tenantSlug}`);
+    console.log(`[TenantDB] ✓ Using cached client for: ${tenantSlug}`);
+    console.log(`[TenantDB] ========================================`);
     return cached;
   }
 
@@ -151,7 +173,7 @@ export async function getTenantDb(tenantSlug: string): Promise<any> {
   }
 
   // Create new Prisma client for this tenant
-  console.log(`[TenantDB] Creating new Prisma client for: ${tenantSlug}`);
+  console.log(`[TenantDB] Step 7: Creating new Prisma client for: ${tenantSlug}`);
   try {
     const tenantPrisma = new PrismaClient({
       datasources: {
@@ -162,21 +184,26 @@ export async function getTenantDb(tenantSlug: string): Promise<any> {
       log:
         process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
     });
+    console.log(`[TenantDB] Step 8: Prisma client instance created`);
 
     // Test the connection by running a simple query
-    console.log(`[TenantDB] Testing connection for: ${tenantSlug}`);
+    console.log(`[TenantDB] Step 9: Testing connection for: ${tenantSlug}`);
     await tenantPrisma.$connect();
-    console.log(`[TenantDB] Connection successful for: ${tenantSlug}`);
+    console.log(`[TenantDB] Step 10: ✓ Connection successful for: ${tenantSlug}`);
 
     // Cache the client
+    console.log(`[TenantDB] Step 11: Caching client for future use`);
     tenantClients.set(tenantSlug, tenantPrisma);
+    console.log(`[TenantDB] ✓ Tenant DB setup complete for: ${tenantSlug}`);
+    console.log(`[TenantDB] ========================================`);
 
     return tenantPrisma;
   } catch (error) {
     console.error(
-      `[TenantDB] Failed to connect to tenant database ${tenantSlug}:`,
+      `[TenantDB] ❌ Failed to connect to tenant database ${tenantSlug}:`,
       error
     );
+    console.log(`[TenantDB] ========================================`);
     throw error;
   }
 }
