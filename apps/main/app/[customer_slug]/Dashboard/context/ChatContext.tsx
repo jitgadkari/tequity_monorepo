@@ -73,11 +73,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Load dataroom ID from user profile on mount
   useEffect(() => {
     const loadDataroomId = async () => {
+      // UUID regex pattern
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
       // First try localStorage
       const storedDataroomId = localStorage.getItem('tequity_dataroom_id');
       if (storedDataroomId) {
-        setDataroomId(storedDataroomId);
-        return;
+        // Validate it's a proper UUID, not a tenant slug
+        if (uuidPattern.test(storedDataroomId)) {
+          console.log('[ChatContext] Found valid UUID dataroomId in localStorage:', storedDataroomId);
+          setDataroomId(storedDataroomId);
+          return;
+        } else {
+          console.warn('[ChatContext] Stored dataroomId is not a valid UUID, clearing:', storedDataroomId);
+          localStorage.removeItem('tequity_dataroom_id');
+        }
       }
 
       // Ensure we have a valid auth token before making API calls
@@ -111,11 +121,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       // Fallback: Use tenant slug from URL as dataroom ID (for mock mode)
       // This allows the chat to work even when tenant DB isn't fully provisioned
+      // NOTE: Don't save to localStorage - this is a temporary fallback only
+      // Once real dataroom is created, /auth/me should return the correct UUID
       const tenantSlug = window.location.pathname.split('/')[1];
       if (tenantSlug && tenantSlug !== 'workspaces' && tenantSlug !== 'signin') {
-        console.log('[ChatContext] Using tenant slug as fallback dataroom ID:', tenantSlug);
+        console.warn('[ChatContext] WARNING: Using tenant slug as fallback dataroom ID:', tenantSlug);
+        console.warn('[ChatContext] This may cause 404 errors - clear localStorage if issues persist');
         setDataroomId(tenantSlug);
-        localStorage.setItem('tequity_dataroom_id', tenantSlug);
+        // Don't persist to localStorage - let the real dataroom ID be fetched on next load
       }
     };
 

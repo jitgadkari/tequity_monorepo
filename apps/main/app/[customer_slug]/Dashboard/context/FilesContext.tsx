@@ -46,12 +46,22 @@ export function FilesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const loadDataroomId = async () => {
       console.log('[FilesContext] Loading dataroom ID...');
+
+      // UUID regex pattern
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
       // First try localStorage
       const storedDataroomId = localStorage.getItem('tequity_dataroom_id');
       if (storedDataroomId) {
-        console.log('[FilesContext] Found dataroomId in localStorage:', storedDataroomId);
-        setDataroomId(storedDataroomId);
-        return;
+        // Validate it's a proper UUID, not a tenant slug
+        if (uuidPattern.test(storedDataroomId)) {
+          console.log('[FilesContext] Found valid UUID dataroomId in localStorage:', storedDataroomId);
+          setDataroomId(storedDataroomId);
+          return;
+        } else {
+          console.warn('[FilesContext] Stored dataroomId is not a valid UUID, clearing:', storedDataroomId);
+          localStorage.removeItem('tequity_dataroom_id');
+        }
       }
 
       // Ensure we have a valid auth token (fetches from session if needed)
