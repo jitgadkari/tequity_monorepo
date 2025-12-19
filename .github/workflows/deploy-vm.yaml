@@ -1,0 +1,179 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches:
+      - main
+      - vm_deployment
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (leave empty for latest build)'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: jitgadkari/tequity_monorepo
+
+jobs:
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      sha_short: ${{ steps.vars.outputs.sha_short }}
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set variables
+        id: vars
+        run: |
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          echo "sha_short=$SHA_SHORT" >> $GITHUB_OUTPUT
+
+          # Use input tag if provided, otherwise use SHA
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            echo "image_tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "image_tag=$SHA_SHORT" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Print build info
+        run: |
+          echo "Building images..."
+          echo "SHA: ${{ steps.vars.outputs.sha_short }}"
+          echo "Image tag: ${{ steps.vars.outputs.image_tag }}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push main-app
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/main/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/main-app:${{ steps.vars.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/main-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push admin-app
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/admin/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/admin-app:${{ steps.vars.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/admin-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Output image URLs
+        run: |
+          echo "Main app: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/main-app:${{ steps.vars.outputs.image_tag }}"
+          echo "Admin app: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/admin-app:${{ steps.vars.outputs.image_tag }}"
+
+  deploy-vm:
+    name: Deploy to VM
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: vm-production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VM
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENDSSH'
+            set -e
+            cd /opt/tequity
+
+            echo "Deploying IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}"
+
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Set image tag for docker compose
+            export IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+
+            # Pull new images
+            docker compose pull
+
+            # Rolling update
+            docker compose up -d --remove-orphans
+
+            # Wait for containers to start
+            sleep 15
+
+            # Verify health
+            echo "Checking main-app health..."
+            for i in {1..5}; do
+              if curl -sf http://localhost:3000/api/health?probe=liveness > /dev/null; then
+                echo "main-app is healthy"
+                break
+              fi
+              if [ $i -eq 5 ]; then
+                echo "main-app health check failed"
+                docker compose logs main-app --tail=50
+                exit 1
+              fi
+              echo "Waiting for main-app... (attempt $i)"
+              sleep 5
+            done
+
+            echo "Checking admin-app health..."
+            for i in {1..5}; do
+              if curl -sf http://localhost:3001/api/health?probe=liveness > /dev/null; then
+                echo "admin-app is healthy"
+                break
+              fi
+              if [ $i -eq 5 ]; then
+                echo "admin-app health check failed"
+                docker compose logs admin-app --tail=50
+                exit 1
+              fi
+              echo "Waiting for admin-app... (attempt $i)"
+              sleep 5
+            done
+
+            # Cleanup old images
+            docker image prune -f
+
+            echo "Deployment successful!"
+            docker compose ps
+          ENDSSH
+
+      - name: Verify deployment externally
+        run: |
+          echo "Waiting for DNS/SSL to settle..."
+          sleep 10
+          echo "Deployment completed. Container status:"
+          ssh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} "docker compose ps"
