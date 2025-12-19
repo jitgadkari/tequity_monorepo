@@ -66,6 +66,20 @@ sudo apt install -y curl jq htop ncdu fail2ban
 sudo systemctl enable fail2ban
 sudo systemctl start fail2ban
 
+# Install Tequity systemd service
+echo "Installing Tequity systemd service..."
+if [ -f /opt/tequity/tequity.service ]; then
+    sudo cp /opt/tequity/tequity.service /etc/systemd/system/tequity.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable tequity
+    echo "Tequity service installed and enabled for auto-start on boot"
+else
+    echo "Note: Copy tequity.service to /opt/tequity/ first, then run:"
+    echo "  sudo cp /opt/tequity/tequity.service /etc/systemd/system/"
+    echo "  sudo systemctl daemon-reload"
+    echo "  sudo systemctl enable tequity"
+fi
+
 # Setup firewall (UFW)
 echo "Configuring firewall..."
 sudo ufw default deny incoming
@@ -82,23 +96,37 @@ echo ""
 echo "Next steps:"
 echo ""
 echo "1. Copy deployment files to /opt/tequity:"
-echo "   scp docker-compose.yml .env Caddyfile deploy.sh manish@172.206.35.139:/opt/tequity/"
+echo "   scp docker-compose.yml .env Caddyfile tequity.service deploy.sh user@VM_IP:/opt/tequity/"
 echo ""
-echo "2. Copy Caddyfile to Caddy config:"
+echo "2. Install systemd service (if not already done):"
+echo "   sudo cp /opt/tequity/tequity.service /etc/systemd/system/"
+echo "   sudo systemctl daemon-reload"
+echo "   sudo systemctl enable tequity"
+echo ""
+echo "3. Copy Caddyfile to Caddy config:"
 echo "   sudo cp /opt/tequity/Caddyfile /etc/caddy/Caddyfile"
 echo ""
-echo "3. Configure DNS - Add A records pointing to this VM's IP:"
+echo "4. Configure DNS - Add A records pointing to this VM's IP:"
 echo "   tequity1.lightningleapanalytics.com -> $(curl -s ifconfig.me)"
 echo "   admin.tequity1.lightningleapanalytics.com -> $(curl -s ifconfig.me)"
 echo ""
-echo "4. Reload Caddy:"
+echo "5. Reload Caddy:"
 echo "   sudo systemctl reload caddy"
 echo ""
-echo "5. Add Cloud SQL authorized network:"
+echo "6. Add Cloud SQL authorized network:"
 echo "   Add this VM's IP ($(curl -s ifconfig.me)) to Cloud SQL authorized networks in GCP Console"
 echo ""
-echo "6. Create .env file from .env.example and fill in values"
+echo "7. Create .env file from .env.example and fill in values"
 echo ""
-echo "7. Run deployment:"
-echo "   cd /opt/tequity && ./deploy.sh"
+echo "8. Start the service:"
+echo "   sudo systemctl start tequity"
+echo ""
+echo "=== Systemd Commands Reference ==="
+echo ""
+echo "  Start:   sudo systemctl start tequity"
+echo "  Stop:    sudo systemctl stop tequity"
+echo "  Restart: sudo systemctl restart tequity"
+echo "  Status:  sudo systemctl status tequity"
+echo "  Logs:    journalctl -u tequity -f"
+echo "  Deploy:  sudo systemctl reload tequity  (pulls new images and restarts)"
 echo ""
