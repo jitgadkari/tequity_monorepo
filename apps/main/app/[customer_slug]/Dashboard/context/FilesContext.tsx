@@ -8,8 +8,10 @@ export interface FileItem {
   name: string;
   type: string;
   size?: number;
+  url?: string;
   category?: string;
   status?: string;
+  hasText?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -117,8 +119,10 @@ export function FilesProvider({ children }: { children: ReactNode }) {
           fileType: string;
           fileSize: number;
           mimeType: string;
+          storageUrl: string;
           category: string;
           status: string;
+          hasText?: boolean;
           createdAt: string;
           updatedAt: string;
         }>;
@@ -131,15 +135,27 @@ export function FilesProvider({ children }: { children: ReactNode }) {
 
       if (response.success && response.data?.files) {
         console.log('[FilesContext] Loaded', response.data.files.length, 'files');
+
+        // Get tenant slug from current path for building file URLs
+        const pathParts = window.location.pathname.split('/');
+        const tenantSlug = pathParts[1]; // First part after root is tenant slug
+
         const loadedFiles: FileItem[] = response.data.files.map((file) => {
           console.log('[FilesContext] Mapping file:', file);
+          // Build file URL using the API endpoint for serving files
+          // Use inline=true for viewing PDFs/images in the browser
+          const fileUrl = file.id && tenantSlug
+            ? `/api/${tenantSlug}/files/${file.id}?download=true&inline=true`
+            : undefined;
           return {
             id: file.id,
             name: file.originalName || file.name,
             type: file.mimeType || file.fileType,
             size: file.fileSize,
+            url: fileUrl,
             category: file.category,
             status: file.status,
+            hasText: file.hasText,
             createdAt: new Date(file.createdAt),
             updatedAt: new Date(file.updatedAt),
           };

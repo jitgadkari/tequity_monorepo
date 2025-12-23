@@ -43,8 +43,8 @@ export default async function PlatformLayout({
   });
 
   if (!tenant) {
-    // Tenant not found, redirect to signin
-    redirect('/signin');
+    // Tenant not found, redirect to logout to clear invalid session
+    redirect('/api/auth/logout');
   }
 
   const currentStage = tenant.onboardingSession?.currentStage || 'SIGNUP_STARTED';

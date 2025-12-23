@@ -108,14 +108,18 @@ export async function GET(
       },
     })
 
-    // Handle download
+    // Handle download or inline view
     if (download) {
       try {
         const fileBuffer = await readFile(file.storageUrl)
+        // Check if inline viewing is preferred (for PDFs and images)
+        const viewInline = url.searchParams.get('inline') === 'true'
+        const disposition = viewInline ? 'inline' : 'attachment'
+
         return new NextResponse(fileBuffer, {
           headers: {
             'Content-Type': file.mimeType || 'application/octet-stream',
-            'Content-Disposition': `attachment; filename="${encodeURIComponent(file.originalName)}"`,
+            'Content-Disposition': `${disposition}; filename="${encodeURIComponent(file.originalName)}"`,
             'Content-Length': file.fileSize.toString(),
           },
         })

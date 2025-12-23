@@ -13,3 +13,17 @@ export async function POST() {
     );
   }
 }
+
+// GET handler for redirect-based logout (used when session is invalid)
+export async function GET(request: Request) {
+  try {
+    await clearSession();
+    const url = new URL('/signin', request.url);
+    url.searchParams.set('error', 'session_expired');
+    return NextResponse.redirect(url);
+  } catch (error) {
+    console.error('Logout error:', error);
+    // Still redirect even if clear fails
+    return NextResponse.redirect(new URL('/signin', request.url));
+  }
+}

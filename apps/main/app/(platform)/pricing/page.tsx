@@ -34,32 +34,34 @@ export default function PricingPage() {
     try {
       const planId = planName.toLowerCase();
 
-      // For starter (free) plan, skip checkout
-      if (planId === "starter") {
-        const res = await fetch("/api/platform/checkout/free", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: planId, billing: billingType }),
-          credentials: "include",
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Failed to process");
-        }
-
-        toast.success("Plan activated! Setting up your workspace...");
-        window.location.href = data.redirectUrl || "/workspaces";
-      } else if (planId === "enterprise") {
-        // For enterprise, redirect to contact
+      // For enterprise, redirect to contact
+      if (planId === "enterprise") {
         window.location.href =
           "mailto:sales@tequity.io?subject=Enterprise%20Plan%20Inquiry";
         setLoadingPlan(null);
         setSelectedPlan(null);
+        return;
+      }
+
+      // For all paid plans (including starter), use Stripe checkout with trial
+      const res = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId, billing: billingType }),
+        credentials: "include",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create checkout session");
+      }
+
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url;
       } else {
-        // For paid plans, go to checkout
-        router.push(`/checkout?plan=${planId}&billing=${billingType}`);
+        throw new Error("No checkout URL received");
       }
     } catch (error) {
       console.error("Error selecting plan:", error);

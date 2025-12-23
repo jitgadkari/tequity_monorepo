@@ -22,7 +22,8 @@ export default async function WorkspacesPage() {
   });
 
   if (!tenant) {
-    redirect('/signin');
+    // Tenant not found in database, redirect to logout to clear invalid session
+    redirect('/api/auth/logout');
   }
 
   // Check if onboarding is complete

@@ -33,6 +33,8 @@ const publicApiPatterns = [
   /^\/api\/health$/,
   /^\/api\/admin\//, // Admin routes use their own auth (x-admin-secret)
   /^\/api\/platform\/provision$/, // Provisioning can be called internally
+  /^\/api\/stripe\/webhook$/, // Stripe webhook (uses signature verification)
+  /^\/api\/stripe\/checkout-success$/, // Stripe checkout success redirect
 ];
 
 // Session-authenticated API patterns (require session cookie, not JWT)
@@ -104,7 +106,7 @@ export function middleware(request: NextRequest) {
     }
 
     // Platform API routes - check session cookie
-    if (pathname.startsWith('/api/auth/') || pathname.startsWith('/api/platform/')) {
+    if (pathname.startsWith('/api/auth/') || pathname.startsWith('/api/platform/') || pathname.startsWith('/api/stripe/')) {
       if (!sessionCookie?.value) {
         return NextResponse.json(
           { success: false, error: 'Unauthorized', code: 'NO_SESSION' },

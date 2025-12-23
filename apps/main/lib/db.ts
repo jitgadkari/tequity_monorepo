@@ -29,7 +29,14 @@ try {
 const PrismaClient = TenantPrismaClient || MasterPrismaClient;
 
 // Cache for tenant Prisma clients
+// Note: Cache is cleared on server restart. In production, consider using a TTL-based cache.
 const tenantClients = new Map<string, any>();
+
+// Clear cache on module load to ensure fresh connections with pgbouncer fix
+// This is a one-time operation during server startup
+if (typeof window === 'undefined') {
+  tenantClients.clear();
+}
 
 // Default PrismaClient singleton for Next.js
 // Used for mock mode or fallback
@@ -434,10 +441,22 @@ export async function getTenantDb(tenantSlug: string): Promise<any> {
   // Create new Prisma client for this tenant
   console.log(`[TenantDB] Step 7: Creating new Prisma client for: ${tenantSlug}`);
   try {
+    // Add pgbouncer=true if using Neon pooled connections (contains -pooler in hostname)
+    // This disables prepared statements which don't work with PgBouncer in transaction mode
+    let connectionUrl = credentials.databaseUrl;
+    if (connectionUrl.includes('-pooler.') || connectionUrl.includes('pooler.')) {
+      const url = new URL(connectionUrl);
+      if (!url.searchParams.has('pgbouncer')) {
+        url.searchParams.set('pgbouncer', 'true');
+        connectionUrl = url.toString();
+        console.log(`[TenantDB] Added pgbouncer=true for pooled Neon connection`);
+      }
+    }
+
     const tenantPrisma = new PrismaClient({
       datasources: {
         db: {
-          url: credentials.databaseUrl,
+          url: connectionUrl,
         },
       },
       log:

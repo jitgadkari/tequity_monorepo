@@ -12,26 +12,7 @@ import {
 import { FileItem } from "./filegrid";
 // import { useSidebar } from "@/components/ui/sidebar";
 import Image from "next/image";
-
-// Lazy import react-pdf to avoid SSR issues
-import type { DocumentProps, PageProps } from "react-pdf";
-
-let Document: React.ComponentType<DocumentProps> | null = null;
-let Page: React.ComponentType<PageProps> | null = null;
-let pdfjs: typeof import("pdfjs-dist") | null = null;
-
-// Initialize PDF.js only on client side
-const initPdfJs = async () => {
-  if (typeof window === "undefined") return;
-  if (Document && Page && pdfjs) return; // Already initialized
-
-  const reactPdf = await import("react-pdf");
-  Document = reactPdf.Document;
-  Page = reactPdf.Page;
-  pdfjs = reactPdf.pdfjs;
-
-  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-};
+import { getToken } from "@/lib/client-auth";
 
 interface PDFViewerProps {
   isOpen: boolean;
@@ -48,23 +29,74 @@ export function PDFViewer({
   folderName,
   onMaximizeChange,
 }: PDFViewerProps) {
-  const [numPages, setNumPages] = useState<number>(0);
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
   const [dragPosition, setDragPosition] = useState(90); // Initial height in vh
   const [isDragging, setIsDragging] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [isPdfReady, setIsPdfReady] = useState(false);
-  const [, forceUpdate] = useState({});
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   // const { state } = useSidebar();
 
-  // Initialize PDF.js on mount
+  // Fetch PDF with auth headers and create blob URL
   useEffect(() => {
-    initPdfJs().then(() => {
-      setIsPdfReady(true);
-      forceUpdate({}); // Force re-render after loading
-    });
-  }, []);
+    if (!isOpen || !file?.url || file.type !== "PDF") {
+      setPdfBlobUrl(null);
+      setPdfError(null);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchPdf = async () => {
+      setPdfLoading(true);
+      setPdfError(null);
+
+      try {
+        const token = getToken();
+        if (!token) {
+          setPdfError("Authentication required");
+          setPdfLoading(false);
+          return;
+        }
+
+        const response = await fetch(file.url!, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load PDF: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        if (isMounted) {
+          const url = URL.createObjectURL(blob);
+          setPdfBlobUrl(url);
+        }
+      } catch (error) {
+        console.error("Error loading PDF:", error);
+        if (isMounted) {
+          setPdfError(error instanceof Error ? error.message : "Failed to load PDF");
+        }
+      } finally {
+        if (isMounted) {
+          setPdfLoading(false);
+        }
+      }
+    };
+
+    fetchPdf();
+
+    return () => {
+      isMounted = false;
+      // Clean up blob URL when component unmounts or file changes
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
+  }, [isOpen, file?.url, file?.type]);
 
   // Check if mobile on mount and resize
   useEffect(() => {
@@ -196,14 +228,6 @@ export function PDFViewer({
   console.log("PDFViewer - File URL:", file.url);
   console.log("PDFViewer - File Type:", file.type);
 
-  function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
-    setNumPages(numPages);
-  }
-
-  function onDocumentLoadError(error: Error) {
-    console.error("PDF load error:", error);
-  }
-
   const handleDownload = () => {
     if (file.url) {
       const link = document.createElement("a");
@@ -314,73 +338,38 @@ export function PDFViewer({
 
         {/* Content Area */}
         <div className="h-[calc(100%-80px)] md:h-[calc(100%-64px)] overflow-auto scrollbar-hide bg-gray-50 dark:bg-[#09090B]">
-          {/* PDF Viewer */}
+          {/* PDF Viewer - Using iframe with blob URL for authenticated PDF display */}
           {file.type === "PDF" ? (
-            file.url ? (
-              <div className="p-4">
-                {!isPdfReady || !Document || !Page ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                      <p className="text-sm text-gray-600 dark:text-white">
-                        Loading PDF viewer...
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <Document
-                    file={file.url}
-                    onLoadSuccess={onDocumentLoadSuccess}
-                    onLoadError={onDocumentLoadError}
-                    loading={
-                      <div className="flex items-center justify-center h-64">
-                        <div className="text-center">
-                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                          <p className="text-sm text-gray-600 dark:text-white">
-                            Loading PDF...
-                          </p>
-                        </div>
-                      </div>
-                    }
-                    error={
-                      <div className="flex items-center justify-center h-64">
-                        <div className="text-center bg-white dark:bg-[#09090B] rounded-lg border border-red-200 p-6">
-                          <p className="text-sm text-red-600 mb-2">
-                            Failed to load PDF
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            The PDF file could not be loaded
-                          </p>
-                        </div>
-                      </div>
-                    }
-                    className="flex flex-col items-center"
-                  >
-                    {Array.from(new Array(numPages), (el, index) => {
-                      const PageComponent = Page!;
-                      return (
-                        <PageComponent
-                          key={`page_${index + 1}`}
-                          pageNumber={index + 1}
-                          width={isMaximized ? 800 : 360}
-                          className="mb-4 shadow-lg"
-                          renderTextLayer={false}
-                          renderAnnotationLayer={false}
-                        />
-                      );
-                    })}
-                  </Document>
-                )}
-                {isPdfReady && numPages > 0 && (
-                  <div className="text-center mt-4 mb-4 text-sm text-gray-600 bg-white rounded-lg py-2">
-                    Total Pages: {numPages}
-                  </div>
-                )}
+            pdfLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Loading PDF...
+                  </p>
+                </div>
+              </div>
+            ) : pdfError ? (
+              <div className="p-6 flex items-center justify-center h-64">
+                <div className="text-center bg-white dark:bg-[#18181B] rounded-lg border border-red-200 dark:border-red-800 p-6">
+                  <p className="text-sm text-red-600 dark:text-red-400 mb-2">
+                    Failed to load PDF
+                  </p>
+                  <p className="text-xs text-gray-400">{pdfError}</p>
+                </div>
+              </div>
+            ) : pdfBlobUrl ? (
+              <div className="h-full w-full">
+                <iframe
+                  src={pdfBlobUrl}
+                  className="w-full h-full border-0"
+                  title={file.name}
+                />
               </div>
             ) : (
               <div className="p-6 flex items-center justify-center h-64">
-                <div className="text-center bg-white rounded-lg border border-gray-200 p-6">
-                  <p className="text-sm text-gray-600 mb-2">
+                <div className="text-center bg-white dark:bg-[#18181B] rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
                     No preview available
                   </p>
                   <p className="text-xs text-gray-400">PDF URL not provided</p>

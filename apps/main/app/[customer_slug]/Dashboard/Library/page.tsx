@@ -2089,7 +2089,9 @@ export default function LibraryPage() {
     name: f.name,
     type: getFileTypeFromMimetype(f.type) as FileItem['type'],
     size: f.size || 0,
+    url: f.url, // Include URL for PDF preview
     category: f.category, // Include category for filtering
+    hasText: f.hasText,
     uploadedAt: f.createdAt || new Date(),
   }));
 
