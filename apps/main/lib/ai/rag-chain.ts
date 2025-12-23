@@ -13,7 +13,6 @@ import {
   getBasicQAPrompt,
   getExactLookupPrompt,
   getAggregationPrompt,
-  getCombinedAnswerPrompt,
   getDecompositionPrompt,
   CATEGORY_KEYWORDS,
   FINANCIAL_ASSISTANT_SYSTEM_PROMPT,
@@ -84,9 +83,8 @@ export async function identifyCategory(query: string): Promise<{
   requiresAggregation: boolean
 }> {
   console.log(`[RAG] Identifying category for query: "${query.substring(0, 50)}..."`)
-  
+
   // Pre-classification rules for common misclassifications
-  const queryLower = query.toLowerCase()
   
   // Geography-related queries ALWAYS need Revenue By Customer
   if (/geography|geographic|region|country|location|apac|emea|north america|india|europe/i.test(query)) {
@@ -289,26 +287,6 @@ export async function decomposeQuery(query: string, complexity: number): Promise
   }
 }
 
-/**
- * Validate and clean context chunks
- * Matches Python: validate_context()
- */
-function validateContext(chunks: SearchResult[]): string[] {
-  if (!chunks || chunks.length === 0) {
-    console.warn('[RAG] Empty context chunks provided')
-    return []
-  }
-
-  const validChunks: string[] = []
-  for (const chunk of chunks) {
-    const text = chunk.text || chunk.content
-    if (text && text.trim()) {
-      validChunks.push(text.trim())
-    }
-  }
-
-  return validChunks
-}
 
 /**
  * Generate answer from context
@@ -386,7 +364,6 @@ function detectAggregationNeeds(query: string): {
   aggregationType: 'sum' | 'average' | 'count' | 'max' | 'min' | 'group_by' | null
   groupByField: 'industry' | 'geography' | 'customer' | 'month' | null
 } {
-  const queryLower = query.toLowerCase()
   
   // Check for aggregation keywords
   const needsSum = /total|sum of|combined/i.test(query)
@@ -431,39 +408,39 @@ function detectAggregationNeeds(query: string): {
 /**
  * Extract specific identifiers from query and determine query type
  */
-function extractKeywords(query: string): { 
+function extractKeywords(query: string): {
   keywords: string[]
   type: 'exact_lookup' | 'general'
 } {
-  const keywords: string[] = []
+  const extractedKeywords: string[] = []
   
   // Extract invoice numbers (INV-XXXXX pattern)
   const invoiceMatches = query.match(/INV-\d+/gi)
   if (invoiceMatches) {
-    keywords.push(...invoiceMatches)
+    extractedKeywords.push(...invoiceMatches)
   }
-  
+
   // Extract customer IDs (CUST-XXXX pattern)
   const customerMatches = query.match(/CUST-\d+/gi)
   if (customerMatches) {
-    keywords.push(...customerMatches)
+    extractedKeywords.push(...customerMatches)
   }
-  
+
   // Extract vendor IDs (VEND-XXXX pattern)
   const vendorMatches = query.match(/VEND-\d+/gi)
   if (vendorMatches) {
-    keywords.push(...vendorMatches)
+    extractedKeywords.push(...vendorMatches)
   }
-  
+
   // Extract grant IDs (OPT-XXXX pattern)
   const grantMatches = query.match(/OPT-\d+/gi)
   if (grantMatches) {
-    keywords.push(...grantMatches)
+    extractedKeywords.push(...grantMatches)
   }
-  
+
   return {
-    keywords,
-    type: keywords.length > 0 ? 'exact_lookup' : 'general'
+    keywords: extractedKeywords,
+    type: extractedKeywords.length > 0 ? 'exact_lookup' : 'general'
   }
 }
 
@@ -473,7 +450,8 @@ function extractKeywords(query: string): {
 function prioritizeExactMatches(
   keywordResults: SearchResult[],
   vectorResults: SearchResult[],
-  keywords: string[]
+  // _keywords: string[]
+  
 ): SearchResult[] {
   if (keywordResults.length === 0) {
     return vectorResults
@@ -598,7 +576,7 @@ export async function processQuery(
 
     // Step 5.5: Prioritize and merge keyword results with vector results
     if (keywordResults.length > 0) {
-      searchResults = prioritizeExactMatches(keywordResults, searchResults, keywords)
+      searchResults = prioritizeExactMatches(keywordResults, searchResults)
       console.log(`[RAG] Prioritized ${keywordResults.length} exact matches`)
     }
 
@@ -735,7 +713,7 @@ export async function* processQueryStream(
 
     // Step 7: Prioritize and merge keyword results
     if (keywordResults.length > 0) {
-      searchResults = prioritizeExactMatches(keywordResults, searchResults, keywords)
+      searchResults = prioritizeExactMatches(keywordResults, searchResults)
       console.log(`[RAG Stream] Prioritized ${keywordResults.length} exact matches`)
     }
 

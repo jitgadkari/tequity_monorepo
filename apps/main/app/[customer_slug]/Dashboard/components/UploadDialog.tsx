@@ -81,11 +81,12 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [dataroomId, setDataroomId] = useState<string | null>(null);
   const [uploadedFileIds, setUploadedFileIds] = useState<Record<number, string>>({});
+  const [pendingDropFiles, setPendingDropFiles] = useState<{files: File[], startIndex: number} | null>(null);
 
   // Google Drive Picker configuration - removed, now using env vars in hook
 
   // Handle files selected from Google Drive
-  const handleDriveFilesSelected = async (driveFiles: any[], accessToken: string) => {
+  const handleDriveFilesSelected = async (driveFiles: Array<{ id: string; name: string; mimeType: string }>, accessToken: string) => {
     console.log('[UploadDialog] Google Drive files selected:', driveFiles);
     toast.success(`Selected ${driveFiles.length} file(s) from Google Drive`);
 
@@ -245,9 +246,10 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
 
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const droppedFiles = Array.from(e.dataTransfer.files);
+        const currentLength = files.length;
         setFiles((prevFiles) => [...prevFiles, ...droppedFiles]);
-        // Automatically start uploading dropped files
-        setTimeout(() => startUpload(droppedFiles, files.length), 100);
+        // Queue the dropped files for upload - they'll be processed by useEffect
+        setPendingDropFiles({ files: droppedFiles, startIndex: currentLength });
       }
     },
     [files.length]
@@ -412,6 +414,15 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
     console.log("[UploadDialog] All uploads completed");
   };
 
+  // Process pending dropped files after startUpload is defined
+  useEffect(() => {
+    if (pendingDropFiles) {
+      const { files: droppedFiles, startIndex } = pendingDropFiles;
+      setPendingDropFiles(null);
+      startUpload(droppedFiles, startIndex);
+    }
+  }, [pendingDropFiles]);
+
   const handleUpload = async () => {
     console.log("[UploadDialog] handleUpload (Done button) called");
     console.log("[UploadDialog] Current uploadStatus:", uploadStatus);
@@ -552,7 +563,7 @@ export function UploadDialog({ onUpload }: UploadDialogProps) {
         <input
           ref={folderInputRef}
           type="file"
-          // @ts-ignore - webkitdirectory is not in the types but is supported
+          // @ts-expect-error - webkitdirectory is not in the types but is supported by browsers
           webkitdirectory="true"
           directory="true"
           multiple

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getSession, updateSession } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { getMasterDb } from '@/lib/master-db';
 import {
-  stripe,
   getStripePriceId,
   getOrCreateStripeCustomer,
   createCheckoutSession,

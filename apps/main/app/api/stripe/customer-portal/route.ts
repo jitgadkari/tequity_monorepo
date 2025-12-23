@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { getMasterDb } from '@/lib/master-db';
 import { createCustomerPortalSession } from '@/lib/stripe';
 
-export async function POST(request: Request) {
+export async function POST(_request: Request) {
   try {
     const session = await getSession();
 

@@ -3,7 +3,7 @@
  * Matches Python backend's chunk_text_with_overlap logic exactly
  */
 
-import { TextChunk, ChunkMetadata } from './types'
+import { TextChunk } from './types'
 
 export interface ChunkingOptions {
   chunkSize?: number           // Target chunk size in characters (default: 1000)
@@ -110,7 +110,7 @@ export function chunkText(
 export function chunkExcelData(
   text: string,
   source: string,
-  options: ChunkingOptions = {}
+  // _options: ChunkingOptions = {}
 ): TextChunk[] {
   const chunks: TextChunk[] = []
   const sheetSections = text.split(/===\s*Sheet:\s*(.+?)\s*===/)

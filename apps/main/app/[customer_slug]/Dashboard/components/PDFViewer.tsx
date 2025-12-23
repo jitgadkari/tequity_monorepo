@@ -91,12 +91,18 @@ export function PDFViewer({
 
     return () => {
       isMounted = false;
-      // Clean up blob URL when component unmounts or file changes
+      // Note: pdfBlobUrl cleanup is handled by setPdfBlobUrl(null) on next run
+    };
+  }, [isOpen, file?.url, file?.type]);
+
+  // Cleanup blob URL when it changes
+  useEffect(() => {
+    return () => {
       if (pdfBlobUrl) {
         URL.revokeObjectURL(pdfBlobUrl);
       }
     };
-  }, [isOpen, file?.url, file?.type]);
+  }, [pdfBlobUrl]);
 
   // Check if mobile on mount and resize
   useEffect(() => {

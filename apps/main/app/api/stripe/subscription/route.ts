@@ -1,8 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { getMasterDb } from '@/lib/master-db';
 import {
-  stripe,
   cancelSubscriptionAtPeriodEnd,
   reactivateSubscription,
   getSubscription,
@@ -10,7 +10,7 @@ import {
 } from '@/lib/stripe';
 
 // GET - Get current subscription details
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
   try {
     const session = await getSession();
 

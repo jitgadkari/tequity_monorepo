@@ -428,7 +428,7 @@ async function runTenantMigrations(databaseUrl: string, tenantSlug: string) {
     // Supabase can take 30-60 seconds to propagate new users to the pooler
     const maxRetries = 5;
     const retryDelay = 15000; // 15 seconds between retries (total wait: up to 60 seconds)
-    let lastError: any;
+    let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       console.log(`[Migration] Attempt ${attempt}/${maxRetries} - Running prisma db push...`);
@@ -446,10 +446,11 @@ async function runTenantMigrations(databaseUrl: string, tenantSlug: string) {
         console.log(`[Migration] Prisma db push took ${Date.now() - dbPushStart}ms`);
         console.log(`[Migration] Schema tables created successfully`);
         break; // Success - exit retry loop
-      } catch (error: any) {
-        lastError = error;
-        const stderr = error.stderr?.toString() || '';
-        const stdout = error.stdout?.toString() || '';
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        const execError = error as { stderr?: Buffer; stdout?: Buffer };
+        const stderr = execError.stderr?.toString() || '';
+        const stdout = execError.stdout?.toString() || '';
 
         console.error(`[Migration] Attempt ${attempt} failed after ${Date.now() - dbPushStart}ms`);
         console.error(`[Migration] STDOUT: ${stdout}`);
@@ -481,21 +482,22 @@ async function runTenantMigrations(databaseUrl: string, tenantSlug: string) {
     console.log(`[Migration] Tenant ${tenantSlug} database is ready`);
 
     return true;
-  } catch (error: any) {
+  } catch (error) {
     const duration = Date.now() - startTime;
     console.error(`[Migration] ========== MIGRATIONS FAILED ==========`);
     console.error(`[Migration] Duration: ${duration}ms`);
     console.error(`[Migration] Tenant: ${tenantSlug}`);
 
     // Extract detailed error info from execSync error
-    if (error.stdout) {
-      console.error(`[Migration] STDOUT:`, error.stdout.toString());
+    const execError = error as { stdout?: Buffer; stderr?: Buffer; status?: number };
+    if (execError.stdout) {
+      console.error(`[Migration] STDOUT:`, execError.stdout.toString());
     }
-    if (error.stderr) {
-      console.error(`[Migration] STDERR:`, error.stderr.toString());
+    if (execError.stderr) {
+      console.error(`[Migration] STDERR:`, execError.stderr.toString());
     }
-    if (error.status !== undefined) {
-      console.error(`[Migration] Exit code: ${error.status}`);
+    if (execError.status !== undefined) {
+      console.error(`[Migration] Exit code: ${execError.status}`);
     }
     console.error(`[Migration] Full error:`, error);
     throw error;

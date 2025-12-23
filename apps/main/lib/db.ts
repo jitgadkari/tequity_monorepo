@@ -1,26 +1,35 @@
 import { getMasterDb } from "./master-db";
 import { decrypt } from "@tequity/utils";
+import type { PrismaClient as TenantPrismaClientType } from "@prisma/tenant-client";
+
+// Use the actual Prisma client type for proper typing across the app
+type TenantDbClient = TenantPrismaClientType;
+
+// Type for Prisma Client constructor - uses any for dynamic require
+type PrismaClientConstructor = new (options?: Record<string, unknown>) => TenantDbClient;
 
 // Try to import tenant client, fall back to master client if it doesn't exist
-let TenantPrismaClient: any;
-let MasterPrismaClient: any;
+let TenantPrismaClient: PrismaClientConstructor | null = null;
+let MasterPrismaClient: PrismaClientConstructor | null = null;
 let usingTenantClient = false;
 
 try {
   // Try to import from @prisma/tenant-client (for multi-tenant setup)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   TenantPrismaClient = require("@prisma/tenant-client").PrismaClient;
   usingTenantClient = true;
   console.log(`[DB] Successfully loaded @prisma/tenant-client`);
-} catch (e) {
+} catch {
   // Fall back to master client in development/mock mode
   console.log(`[DB] @prisma/tenant-client not available, will use master-client for fallback`);
   TenantPrismaClient = null;
 }
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   MasterPrismaClient = require("@prisma/master-client").PrismaClient;
   console.log(`[DB] Successfully loaded @prisma/master-client`);
-} catch (e) {
+} catch {
   console.log(`[DB] @prisma/master-client not available`);
   MasterPrismaClient = null;
 }
@@ -30,7 +39,7 @@ const PrismaClient = TenantPrismaClient || MasterPrismaClient;
 
 // Cache for tenant Prisma clients
 // Note: Cache is cleared on server restart. In production, consider using a TTL-based cache.
-const tenantClients = new Map<string, any>();
+const tenantClients = new Map<string, TenantDbClient>();
 
 // Clear cache on module load to ensure fresh connections with pgbouncer fix
 // This is a one-time operation during server startup
@@ -41,7 +50,7 @@ if (typeof window === 'undefined') {
 // Default PrismaClient singleton for Next.js
 // Used for mock mode or fallback
 const globalForPrisma = globalThis as unknown as {
-  prisma: any | undefined;
+  prisma: TenantDbClient | undefined;
 };
 
 if (!globalForPrisma.prisma && PrismaClient) {
@@ -51,8 +60,9 @@ if (!globalForPrisma.prisma && PrismaClient) {
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
   // Log available models
-  const modelNames = Object.keys(globalForPrisma.prisma).filter(
-    (k) => !k.startsWith("_") && !k.startsWith("$") && typeof globalForPrisma.prisma[k] === "object"
+  const prismaClient = globalForPrisma.prisma!;
+  const modelNames = Object.keys(prismaClient).filter(
+    (k) => !k.startsWith("_") && !k.startsWith("$") && typeof (prismaClient as unknown as Record<string, unknown>)[k] === "object"
   );
   console.log(`[DB] Available models in default prisma: ${modelNames.join(", ") || "none"}`);
 }
@@ -116,7 +126,7 @@ function createMockTenantClient(tenantSlug: string) {
   const mockClient = {
     // Mock user model
     user: {
-      findFirst: async (args: any) => {
+      findFirst: async (args: { where?: { email?: string } }) => {
         console.log(`[MockClient] user.findFirst called with:`, args?.where);
         // Match by email if provided, otherwise return mock user
         if (args?.where?.email) {
@@ -127,7 +137,7 @@ function createMockTenantClient(tenantSlug: string) {
         }
         return mockUser;
       },
-      findUnique: async (args: any) => {
+      findUnique: async (args: { where?: unknown }) => {
         console.log(`[MockClient] user.findUnique called with:`, args?.where);
         return mockUser;
       },
@@ -135,15 +145,15 @@ function createMockTenantClient(tenantSlug: string) {
         console.log(`[MockClient] user.findMany called`);
         return [mockUser];
       },
-      create: async (args: any) => {
+      create: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] user.create called`);
         return { ...mockUser, ...args?.data };
       },
-      update: async (args: any) => {
+      update: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] user.update called`);
         return { ...mockUser, ...args?.data };
       },
-      upsert: async (args: any) => {
+      upsert: async (args: { create?: Record<string, unknown>; update?: Record<string, unknown> }) => {
         console.log(`[MockClient] user.upsert called`);
         return { ...mockUser, ...args?.create, ...args?.update };
       },
@@ -159,7 +169,7 @@ function createMockTenantClient(tenantSlug: string) {
         console.log(`[MockClient] tenant.findUnique called`);
         return { slug: tenantSlug, name: 'Mock Tenant', email: mockUser.email, isActive: true };
       },
-      upsert: async (args: any) => {
+      upsert: async (args: { create?: Record<string, unknown>; update?: Record<string, unknown> }) => {
         console.log(`[MockClient] tenant.upsert called`);
         return { slug: tenantSlug, name: 'Mock Tenant', ...args?.create, ...args?.update };
       },
@@ -179,7 +189,7 @@ function createMockTenantClient(tenantSlug: string) {
         console.log(`[MockClient] dataroom.findMany called`);
         return [mockDataroom];
       },
-      create: async (args: any) => {
+      create: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] dataroom.create called`);
         return { ...mockDataroom, ...args?.data };
       },
@@ -195,7 +205,7 @@ function createMockTenantClient(tenantSlug: string) {
         console.log(`[MockClient] dataroomMember.findMany called`);
         return [{ dataroomId: mockDataroomId, userId: mockUserId, role: 'owner', status: 'active' }];
       },
-      create: async (args: any) => {
+      create: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] dataroomMember.create called`);
         return { dataroomId: mockDataroomId, userId: mockUserId, role: 'owner', status: 'active', ...args?.data };
       },
@@ -211,7 +221,7 @@ function createMockTenantClient(tenantSlug: string) {
         console.log(`[MockClient] document.findFirst called`);
         return null;
       },
-      create: async (args: any) => {
+      create: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] document.create called`);
         return { id: `mock-doc-${Date.now()}`, ...args?.data };
       },
@@ -243,11 +253,11 @@ function createMockTenantClient(tenantSlug: string) {
         console.log(`[MockClient] chatSession.findUnique called`);
         return null;
       },
-      create: async (args: any) => {
+      create: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] chatSession.create called`);
         return { id: `mock-session-${Date.now()}`, ...args?.data };
       },
-      update: async (args: any) => {
+      update: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] chatSession.update called`);
         return { id: `mock-session-${Date.now()}`, ...args?.data };
       },
@@ -259,7 +269,7 @@ function createMockTenantClient(tenantSlug: string) {
         console.log(`[MockClient] chatMessage.findMany called`);
         return [];
       },
-      create: async (args: any) => {
+      create: async (args: { data?: Record<string, unknown> }) => {
         console.log(`[MockClient] chatMessage.create called`);
         return { id: `mock-message-${Date.now()}`, ...args?.data };
       },
@@ -272,17 +282,42 @@ function createMockTenantClient(tenantSlug: string) {
     $disconnect: async () => {
       console.log(`[MockClient] $disconnect called (no-op in mock mode)`);
     },
+    $on: () => {
+      console.log(`[MockClient] $on called (no-op in mock mode)`);
+    },
+    $executeRaw: async () => {
+      console.log(`[MockClient] $executeRaw called`);
+      return 0;
+    },
     $executeRawUnsafe: async (query: string) => {
       console.log(`[MockClient] $executeRawUnsafe called:`, query.substring(0, 50) + '...');
       return 0;
+    },
+    $queryRaw: async () => {
+      console.log(`[MockClient] $queryRaw called`);
+      return [];
     },
     $queryRawUnsafe: async () => {
       console.log(`[MockClient] $queryRawUnsafe called`);
       return [];
     },
+    $transaction: async (args: unknown) => {
+      console.log(`[MockClient] $transaction called`);
+      if (Array.isArray(args)) {
+        return Promise.all(args);
+      }
+      return args;
+    },
+    $extends: () => {
+      console.log(`[MockClient] $extends called`);
+      return mockClient;
+    },
+    $use: () => {
+      console.log(`[MockClient] $use called (no-op in mock mode)`);
+    },
   };
 
-  return mockClient;
+  return mockClient as unknown as TenantDbClient;
 }
 
 /**
@@ -393,7 +428,7 @@ async function getTenantCredentials(tenantSlug: string): Promise<{
  * @param tenantSlug - The tenant identifier from URL (e.g., "acme-corp")
  * @returns PrismaClient instance connected to tenant's database
  */
-export async function getTenantDb(tenantSlug: string): Promise<any> {
+export async function getTenantDb(tenantSlug: string): Promise<TenantDbClient> {
   console.log(`[TenantDB] ========================================`);
   console.log(`[TenantDB] getTenantDb() called for: ${tenantSlug}`);
   console.log(`[TenantDB] Timestamp: ${new Date().toISOString()}`);
@@ -417,6 +452,9 @@ export async function getTenantDb(tenantSlug: string): Promise<any> {
     console.log(
       `[TenantDB] No credentials found for ${tenantSlug}, using default prisma client`
     );
+    if (!prisma) {
+      throw new Error("Default prisma client is not initialized");
+    }
     return prisma;
   }
 
@@ -440,6 +478,11 @@ export async function getTenantDb(tenantSlug: string): Promise<any> {
 
   // Create new Prisma client for this tenant
   console.log(`[TenantDB] Step 7: Creating new Prisma client for: ${tenantSlug}`);
+
+  if (!PrismaClient) {
+    throw new Error("PrismaClient is not available - neither tenant-client nor master-client could be loaded");
+  }
+
   try {
     // Add pgbouncer=true if using Neon pooled connections (contains -pooler in hostname)
     // This disables prepared statements which don't work with PgBouncer in transaction mode

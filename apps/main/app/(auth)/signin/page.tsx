@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { clearLocalStorage } from "@/lib/client-auth";
 
-export default function SigninPage() {
+function SigninPageContent() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"email" | "otp">("email");
@@ -409,5 +409,13 @@ export default function SigninPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SigninPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
+      <SigninPageContent />
+    </Suspense>
   );
 }
