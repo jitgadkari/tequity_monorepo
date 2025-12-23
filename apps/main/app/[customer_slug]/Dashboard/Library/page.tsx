@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -78,18 +78,13 @@ function ClientOnly({ children }: { children: React.ReactNode }) {
 
 interface LibraryContentProps {
   files: FileItem[];
-  setFiles: React.Dispatch<React.SetStateAction<FileItem[]>>;
   folders: Array<{ id: string; name: string; fileCount: number }>;
-  setFolders: React.Dispatch<
-    React.SetStateAction<Array<{ id: string; name: string; fileCount: number }>>
-  >;
   handleDownload: (file: FileItem) => void;
   deleteFile: (fileId: string) => Promise<boolean>;
 }
 
 function LibraryContent({
   files,
-  setFiles,
   folders,
   handleDownload,
   deleteFile,
@@ -2084,7 +2079,8 @@ export default function LibraryPage() {
   console.log('[LibraryPage] Rendering with contextFiles:', contextFiles.length, 'isLoading:', isLoading);
 
   // Convert context files to the format expected by LibraryContent
-  const files: FileItem[] = contextFiles.map((f) => ({
+  // Use useMemo to prevent recreating arrays on every render
+  const files: FileItem[] = useMemo(() => contextFiles.map((f) => ({
     id: f.id || '',
     name: f.name,
     type: getFileTypeFromMimetype(f.type) as FileItem['type'],
@@ -2093,13 +2089,13 @@ export default function LibraryPage() {
     category: f.category, // Include category for filtering
     hasText: f.hasText,
     uploadedAt: f.createdAt || new Date(),
-  }));
+  })), [contextFiles]);
 
-  const folders = contextFolders.map((f) => ({
+  const folders = useMemo(() => contextFolders.map((f) => ({
     id: f.id,
     name: f.name,
     fileCount: f.fileCount || 0,
-  }));
+  })), [contextFolders]);
 
   // Local state for managing files in the UI
   const [localFiles, setLocalFiles] = useState<FileItem[]>(files);
@@ -2109,11 +2105,11 @@ export default function LibraryPage() {
   useEffect(() => {
     console.log('[LibraryPage] contextFiles changed, updating localFiles:', files.length);
     setLocalFiles(files);
-  }, [contextFiles]);
+  }, [files]);
 
   useEffect(() => {
     setLocalFolders(folders);
-  }, [contextFolders]);
+  }, [folders]);
 
   const handleFileUpload = (
     newFiles: FileItem[],
@@ -2166,9 +2162,7 @@ export default function LibraryPage() {
       ) : (
         <LibraryContent
           files={localFiles}
-          setFiles={setLocalFiles}
           folders={localFolders}
-          setFolders={setLocalFolders}
           handleDownload={handleDownload}
           deleteFile={deleteFile}
         />

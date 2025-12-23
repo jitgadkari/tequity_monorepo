@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Plus_Jakarta_Sans, Instrument_Serif } from "next/font/google";
 import { PricingHeader } from "./components/PricingHeader";
@@ -25,7 +24,6 @@ export default function PricingPage() {
   const [billingType, setBillingType] = useState("yearly");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
-  const router = useRouter();
 
   const handleSelectPlan = async (planName: string) => {
     setSelectedPlan(planName);

@@ -4,6 +4,8 @@ import { getMasterDb } from '@/lib/master-db';
 import { stripe, getPlanByPriceId } from '@/lib/stripe';
 import type Stripe from 'stripe';
 
+type MasterDbClient = ReturnType<typeof getMasterDb>;
+
 // Disable body parsing for webhook
 export const dynamic = 'force-dynamic';
 
@@ -102,7 +104,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function handleCheckoutCompleted(db: any, session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(db: MasterDbClient, session: Stripe.Checkout.Session) {
   const tenantId = session.metadata?.tenantId;
   if (!tenantId) {
     console.error('[Stripe Webhook] No tenantId in checkout session metadata');
@@ -121,7 +123,7 @@ async function handleCheckoutCompleted(db: any, session: Stripe.Checkout.Session
   });
 }
 
-async function handleSubscriptionCreated(db: any, subscription: Stripe.Subscription) {
+async function handleSubscriptionCreated(db: MasterDbClient, subscription: Stripe.Subscription) {
   const tenantId = subscription.metadata?.tenantId;
   const customerId = subscription.customer as string;
 
@@ -178,7 +180,7 @@ async function handleSubscriptionCreated(db: any, subscription: Stripe.Subscript
   });
 }
 
-async function handleSubscriptionUpdated(db: any, subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(db: MasterDbClient, subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
 
   const existingSubscription = await db.subscription.findFirst({
@@ -231,7 +233,7 @@ async function handleSubscriptionUpdated(db: any, subscription: Stripe.Subscript
   }
 }
 
-async function handleSubscriptionDeleted(db: any, subscription: Stripe.Subscription) {
+async function handleSubscriptionDeleted(db: MasterDbClient, subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
 
   const existingSubscription = await db.subscription.findFirst({
@@ -260,7 +262,7 @@ async function handleSubscriptionDeleted(db: any, subscription: Stripe.Subscript
   });
 }
 
-async function handleInvoicePaymentSucceeded(db: any, invoice: Stripe.Invoice) {
+async function handleInvoicePaymentSucceeded(db: MasterDbClient, invoice: Stripe.Invoice) {
   const customerId = invoice.customer as string;
 
   const subscription = await db.subscription.findFirst({
@@ -292,7 +294,7 @@ async function handleInvoicePaymentSucceeded(db: any, invoice: Stripe.Invoice) {
   }
 }
 
-async function handleInvoicePaymentFailed(db: any, invoice: Stripe.Invoice) {
+async function handleInvoicePaymentFailed(db: MasterDbClient, invoice: Stripe.Invoice) {
   const customerId = invoice.customer as string;
 
   const subscription = await db.subscription.findFirst({
@@ -314,7 +316,7 @@ async function handleInvoicePaymentFailed(db: any, invoice: Stripe.Invoice) {
   // TODO: Send email notification about failed payment
 }
 
-async function handleTrialWillEnd(db: any, subscription: Stripe.Subscription) {
+async function handleTrialWillEnd(db: MasterDbClient, subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
 
   const existingSubscription = await db.subscription.findFirst({
@@ -333,7 +335,9 @@ async function handleTrialWillEnd(db: any, subscription: Stripe.Subscription) {
   // The trial_will_end event fires 3 days before trial ends by default
 }
 
-function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
+type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'UNPAID';
+
+function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): SubscriptionStatus {
   switch (stripeStatus) {
     case 'trialing':
       return 'TRIALING';

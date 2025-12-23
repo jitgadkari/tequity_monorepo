@@ -140,6 +140,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (dataroomId) {
       loadChats();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataroomId]);
 
   const loadChats = useCallback(async () => {

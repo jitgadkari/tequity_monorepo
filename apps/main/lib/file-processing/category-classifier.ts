@@ -5,7 +5,7 @@
  */
 
 import OpenAI from 'openai'
-import { FINANCIAL_CATEGORIES, FinancialCategory, SheetInfo } from './types'
+import { FINANCIAL_CATEGORIES, FinancialCategory } from './types'
 import { getExcelContentPreview } from './excel-extractor'
 
 // Lazy initialization to avoid build-time errors when env vars aren't set

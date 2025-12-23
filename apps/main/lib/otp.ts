@@ -3,6 +3,13 @@ import prisma from './db'
 const OTP_EXPIRY_MINUTES = 10
 const MAX_OTP_ATTEMPTS = 3
 
+function getPrisma() {
+  if (!prisma) {
+    throw new Error('Prisma client is not initialized')
+  }
+  return prisma
+}
+
 /**
  * Generate a 6-digit OTP code
  */
@@ -23,7 +30,7 @@ export async function createOTP(
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000)
 
   // Delete any existing OTPs for this email/purpose
-  await prisma.otpVerification.deleteMany({
+  await getPrisma().otpVerification.deleteMany({
     where: {
       tenantSlug,
       email,
@@ -32,7 +39,7 @@ export async function createOTP(
   })
 
   // Create new OTP
-  await prisma.otpVerification.create({
+  await getPrisma().otpVerification.create({
     data: {
       tenantSlug,
       email,
@@ -63,7 +70,7 @@ export async function verifyOTP(
   code: string,
   purpose: 'login' | 'signup' | 'password_reset'
 ): Promise<{ valid: boolean; error?: string }> {
-  const otp = await prisma.otpVerification.findFirst({
+  const otp = await getPrisma().otpVerification.findFirst({
     where: {
       tenantSlug,
       email,
@@ -90,7 +97,7 @@ export async function verifyOTP(
   }
 
   // Increment attempts
-  await prisma.otpVerification.update({
+  await getPrisma().otpVerification.update({
     where: { id: otp.id },
     data: { attempts: otp.attempts + 1 },
   })
@@ -101,7 +108,7 @@ export async function verifyOTP(
   }
 
   // Mark as verified
-  await prisma.otpVerification.update({
+  await getPrisma().otpVerification.update({
     where: { id: otp.id },
     data: { verifiedAt: new Date() },
   })
@@ -117,7 +124,7 @@ export async function hasPendingOTP(
   email: string,
   purpose: 'login' | 'signup' | 'password_reset'
 ): Promise<boolean> {
-  const otp = await prisma.otpVerification.findFirst({
+  const otp = await getPrisma().otpVerification.findFirst({
     where: {
       tenantSlug,
       email,
@@ -134,7 +141,7 @@ export async function hasPendingOTP(
  * Clean up expired OTPs (can be called periodically)
  */
 export async function cleanupExpiredOTPs(): Promise<number> {
-  const result = await prisma.otpVerification.deleteMany({
+  const result = await getPrisma().otpVerification.deleteMany({
     where: {
       expiresAt: { lt: new Date() },
     },

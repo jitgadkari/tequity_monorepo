@@ -7,7 +7,6 @@
 import { PrismaClient, Prisma } from '@prisma/tenant-client'
 
 const VECTOR_SIZE = 1536 // OpenAI ada-002 embedding dimension
-const DEFAULT_TABLE = 'DocumentEmbedding'
 
 // Type alias for tenant prisma client
 type TenantPrismaClient = PrismaClient

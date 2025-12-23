@@ -147,7 +147,8 @@ export function ChatInterface({ selectedFile }: ChatInterfaceProps) {
       hasInitialized.current = true;
       createNewChat();
     }
-  }, [activeChatId, chats.length, createNewChat, dataroomId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId, chats.length, dataroomId]);
 
   const messages = useMemo(
     () => activeChat?.messages || [],

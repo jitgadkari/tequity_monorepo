@@ -1,23 +1,34 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import { ChatInterface } from "../components/ChatInterface";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { useChatContext } from "../context/ChatContext";
 
 export default function ChatPage() {
-  const router = useRouter();
-  const { 
-    activeChat, 
-    activeChatId, 
-    createNewChat, 
+  const {
+    activeChat,
+    activeChatId,
+    createNewChat,
     loadChats,
-    isLoading 
+    isLoading
   } = useChatContext();
   const [chatTitle, setChatTitle] = useState<string>("New Chat");
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Define handleNewChat before using it in useEffect
+  const handleNewChat = useCallback(async () => {
+    try {
+      console.log('Creating new chat...');
+      const chatId = await createNewChat();
+      if (chatId) {
+        console.log('New chat created with ID:', chatId);
+      }
+    } catch (error) {
+      console.error('Failed to create new chat:', error);
+    }
+  }, [createNewChat]);
 
   // Load chats on initial mount
   useEffect(() => {
@@ -39,7 +50,7 @@ export default function ChatPage() {
       // If no active chat, create a new one
       handleNewChat();
     }
-  }, [isInitialized, activeChatId]);
+  }, [isInitialized, activeChatId, handleNewChat]);
 
   // Update title when active chat changes
   useEffect(() => {
@@ -49,18 +60,6 @@ export default function ChatPage() {
       setChatTitle("New Chat");
     }
   }, [activeChat]);
-
-  const handleNewChat = useCallback(async () => {
-    try {
-      console.log('Creating new chat...');
-      const chatId = await createNewChat();
-      if (chatId) {
-        console.log('New chat created with ID:', chatId);
-      }
-    } catch (error) {
-      console.error('Failed to create new chat:', error);
-    }
-  }, [createNewChat]);
 
   const handleChatSelect = (chatId: string) => {
     // This will be handled by the DashboardLayout

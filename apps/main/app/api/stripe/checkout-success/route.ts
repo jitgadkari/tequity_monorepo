@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getMasterDb } from '@/lib/master-db';
 import { stripe, getPlanByPriceId } from '@/lib/stripe';
+import type Stripe from 'stripe';
 
 export async function GET(request: Request) {
   try {
@@ -32,14 +33,14 @@ export async function GET(request: Request) {
     const db = getMasterDb();
 
     // Get subscription details
-    const subscription = checkoutSession.subscription as any;
+    const subscription = checkoutSession.subscription as Stripe.Subscription | null;
     const priceId = subscription?.items?.data?.[0]?.price?.id;
     const planInfo = priceId ? getPlanByPriceId(priceId) : null;
 
     // Extract customer ID (could be string or expanded object)
     const customerId = typeof checkoutSession.customer === 'string'
       ? checkoutSession.customer
-      : (checkoutSession.customer as any)?.id;
+      : (checkoutSession.customer as Stripe.Customer | null)?.id;
 
     // Get period dates from subscription items (new Stripe API structure)
     const subscriptionItem = subscription?.items?.data?.[0];

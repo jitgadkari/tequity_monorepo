@@ -256,7 +256,7 @@ async function processFileAsync(prisma: PrismaClient, fileId: string, buffer: Bu
           })),
           skipDuplicates: true,
         })
-      } catch (err) {
+      } catch {
         // Ignore duplicate errors since upsertEmbeddings already handles this
         console.log('[Upload] Prisma createMany skipped (records may already exist)')
       }
